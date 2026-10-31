@@ -1,3 +1,0 @@
-[submodule "third-party/cmsis_device_f3"]
-	path = third-party/cmsis_device_f3
-	url = https://github.com/STMicroelectronics/cmsis_device_f3.git

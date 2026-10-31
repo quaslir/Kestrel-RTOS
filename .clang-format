@@ -1,0 +1,53 @@
+# Kestrel RTOS code style (C, embedded). Requires clang-format 15+.
+---
+Language: Cpp                       # C files are formatted with the Cpp parser
+BasedOnStyle: LLVM
+
+# Layout
+IndentWidth: 4
+TabWidth: 4
+UseTab: Never
+ColumnLimit: 100
+ContinuationIndentWidth: 4
+
+# Braces: Linux kernel style — functions on a new line, blocks on the same line
+BreakBeforeBraces: Linux
+InsertBraces: true                  # always add { } to if/else/for/while
+IndentCaseLabels: false
+
+# No one-liners: every body on its own line (easier to step through in GDB)
+AllowShortFunctionsOnASingleLine: None
+AllowShortIfStatementsOnASingleLine: Never
+AllowShortLoopsOnASingleLine: false
+AllowShortBlocksOnASingleLine: Never
+AllowShortCaseLabelsOnASingleLine: false
+
+# Pointers: C convention, star next to the name (uint32_t *sp)
+PointerAlignment: Right
+DerivePointerAlignment: false
+
+# Alignment — keeps register maps and #define tables readable
+AlignConsecutiveMacros: AcrossComments
+AlignConsecutiveAssignments: None
+AlignConsecutiveDeclarations: None
+AlignTrailingComments: true
+AlignEscapedNewlines: Left
+AlignAfterOpenBracket: Align
+AlignOperands: Align
+
+# Spacing
+SpaceAfterCStyleCast: false
+SpaceBeforeParens: ControlStatements
+Cpp11BracedListStyle: false         # { .a = 1, .b = 2 } with inner spaces
+
+# Empty lines
+MaxEmptyLinesToKeep: 1
+KeepEmptyLinesAtTheStartOfBlocks: false
+
+# Includes: never reorder — order can matter (stm32f3xx.h before peripherals)
+SortIncludes: Never
+IncludeBlocks: Preserve
+
+# Comments
+ReflowComments: true
+...

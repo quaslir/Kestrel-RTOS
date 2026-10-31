@@ -1,0 +1,33 @@
+CompileFlags:
+  CompilationDatabase: build
+  Add:
+    - --target=arm-none-eabi
+  Remove:
+    - -mthumb-interwork
+    - -fno-tree-loop-distribute-patterns
+    - -fstack-usage
+    - -fcyclomatic-complexity
+    - -specs=*
+    - --specs=*
+
+Diagnostics:
+  UnusedIncludes: None
+  MissingIncludes: None
+  ClangTidy:
+    Add:
+      - bugprone-*
+      - readability-*
+      - misc-*
+    Remove:
+      - readability-magic-numbers
+      - readability-identifier-length
+      - readability-function-cognitive-complexity
+      - bugprone-easily-swappable-parameters
+      - misc-include-cleaner
+      - misc-unused-parameters
+
+InlayHints:
+  Enabled: true
+
+Index:
+  Background: Build
