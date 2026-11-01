@@ -1,10 +1,12 @@
 #include "gpio.h"
 #include "systick.h"
 #include <stdint.h>
-
+#include "clock.h"
 int main(void)
 {
-    systick_init(8000000);
+    clock_setup_72MHz();
+    systick_init(72000000);
+
     gpio_enable_port();
     gpio_set_dir();
     gpio_set_output_mode();
