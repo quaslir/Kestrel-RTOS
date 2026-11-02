@@ -113,11 +113,11 @@ kestrel/
 Each milestone has an **exit criterion**. A milestone is done only when its criterion is met and its tests pass. Estimates assume part-time work alongside studies.
 
 ### M0 — Bare-metal foundation · ~2 weeks
-- [ ] Linker script (FLASH, SRAM, CCMRAM; `.data` / `.bss` / stack)
-- [ ] Startup: vector table, reset handler, `.data` copy, `.bss` zeroing, FPU enable
-- [ ] Clock: HSE bypass from ST-LINK → PLL → 72 MHz (with flash wait states)
-- [ ] GPIO, UART2 (virtual COM port), SysTick at 1 kHz
-- [ ] CMake build, `flash` and `debug` targets
+- [x] Linker script (FLASH, SRAM, CCMRAM; `.data` / `.bss` / stack)
+- [x] Startup: vector table, reset handler, `.data` copy, `.bss` zeroing, FPU enable
+- [x] Clock: HSE bypass from ST-LINK → PLL → 72 MHz (with flash wait states)
+- [x] GPIO, UART2 (virtual COM port), SysTick at 1 kHz
+- [x] CMake build, `flash` and `debug` targets
 
 **Exit:** LED blinks from SysTick, text appears on the virtual COM port, section sizes match expectations.
 
