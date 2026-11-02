@@ -1,0 +1,48 @@
+#include "kestrel/task.h"
+static uint8_t task_count = 0;
+__attribute__((aligned(8))) static uint32_t stacks[MAX_TASKS][STACK_SIZE];
+static kestrel_tcb_t tcbs[MAX_TASKS];
+static void trap(void)
+{
+    while (1) {
+    }
+}
+static void write_null(uint32_t **preg, uint8_t times)
+{
+    uint32_t *reg = *preg;
+    for (uint8_t i = 0; i < times; i++) {
+        *--reg = NULLPTR;
+    }
+
+    *preg = reg;
+}
+
+kestrel_task_result_t kestrel_new_task(kestrel_task_fn_t task, void *data)
+{
+    kestrel_task_result_t result;
+    result.id = KESTREL_TASK_INVALID;
+    if (!task) {
+        result.status = KESTREL_ERR_NULL_FN;
+        return result;
+    }
+
+    if (task_count == MAX_TASKS) {
+        result.status = KESTREL_ERR_NO_SLOT;
+        return result;
+    }
+
+    uint32_t *sp = &stacks[task_count][STACK_SIZE];
+    *--sp = INITIAL_XPSR;
+    *--sp = (uint32_t)task & CLEAR_BIT_ZERO;
+    *--sp = (uint32_t)&trap;
+
+    write_null(&sp, 4);
+
+    *--sp = (uint32_t)data;
+    write_null(&sp, 8);
+    result.status = KESTREL_OK;
+    result.id = task_count;
+    tcbs[task_count++].sp = sp;
+
+    return result;
+}

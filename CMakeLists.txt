@@ -35,7 +35,8 @@ set(KESTREL_LINKER_SCRIPT  ${PROJECT_SOURCE_DIR}/startup/stm32f303re.ld)
 set(KESTREL_STARTUP_SOURCE ${PROJECT_SOURCE_DIR}/startup/startup_stm32f303.c)
 
 file(GLOB KESTREL_DRIVER_SOURCES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/drivers/src/*.c)
-
+file(GLOB KESTREL_KERNEL_SOURCES CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/kernel/src/*.c)
+file(GLOB KESTREL_PORT_SOURCES   CONFIGURE_DEPENDS ${PROJECT_SOURCE_DIR}/port/cm4f/*.c)
 function(kestrel_add_firmware name)
     foreach(required IN ITEMS ${KESTREL_LINKER_SCRIPT} ${KESTREL_STARTUP_SOURCE})
         if(NOT EXISTS ${required})
@@ -43,12 +44,16 @@ function(kestrel_add_firmware name)
         endif()
     endforeach()
 
-    add_executable(${name} ${ARGN} ${KESTREL_STARTUP_SOURCE} ${KESTREL_DRIVER_SOURCES})
+    add_executable(${name} ${ARGN} ${KESTREL_STARTUP_SOURCE}
+        ${KESTREL_DRIVER_SOURCES} ${KESTREL_KERNEL_SOURCES} ${KESTREL_PORT_SOURCES})
     set_target_properties(${name} PROPERTIES
         SUFFIX       ".elf"
         LINK_DEPENDS ${KESTREL_LINKER_SCRIPT})
 
-    target_include_directories(${name} PRIVATE ${PROJECT_SOURCE_DIR}/drivers/include)
+        target_include_directories(${name} PRIVATE
+            ${PROJECT_SOURCE_DIR}/drivers/include
+            ${PROJECT_SOURCE_DIR}/kernel/include
+            ${PROJECT_SOURCE_DIR}/port/cm4f)
     target_link_libraries(${name} PRIVATE kestrel_options)
     target_link_options(${name} PRIVATE
         -T${KESTREL_LINKER_SCRIPT}
