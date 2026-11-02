@@ -8,7 +8,7 @@
 #define NULLPTR              0x0
 #define CLEAR_BIT_ZERO       (~(1U << 0))
 #define INITIAL_XPSR         (1UL << 24)
-typedef void *(*kestrel_task_fn_t)(void);
+typedef void (*kestrel_task_fn_t)(void *arg);
 
 typedef enum {
     KESTREL_OK = 0,
@@ -26,4 +26,5 @@ typedef struct {
 } kestrel_task_result_t;
 
 kestrel_task_result_t kestrel_new_task(kestrel_task_fn_t task, void *data);
+__attribute__((noreturn)) void kestrel_start(void);
 #endif

@@ -2,9 +2,11 @@
 static uint8_t task_count = 0;
 __attribute__((aligned(8))) static uint32_t stacks[MAX_TASKS][STACK_SIZE];
 static kestrel_tcb_t tcbs[MAX_TASKS];
-static void trap(void)
+kestrel_tcb_t *kestrel_current = NULLPTR;
+__attribute__((noreturn)) static void trap(void)
 {
     while (1) {
+        __asm volatile("wfi");
     }
 }
 static void write_null(uint32_t **preg, uint8_t times)
@@ -45,4 +47,16 @@ kestrel_task_result_t kestrel_new_task(kestrel_task_fn_t task, void *data)
     tcbs[task_count++].sp = sp;
 
     return result;
+}
+
+void kestrel_start(void)
+{
+    if (task_count == 0) {
+        trap();
+    }
+    kestrel_current = &tcbs[0];
+
+    __asm volatile("svc 0");
+
+    trap();
 }
