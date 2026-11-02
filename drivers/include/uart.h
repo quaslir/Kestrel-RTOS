@@ -8,5 +8,6 @@
 #define UART2_AF      7U
 #define UART2_MIN_BRR 16U
 bool uart_init(uint32_t baud); // returns actual freq
-
+void uart_putc(char c);
+void uart_puts(const char *str);
 #endif

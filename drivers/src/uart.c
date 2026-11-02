@@ -29,3 +29,17 @@ bool uart_init(uint32_t baud)
     USART2->CR1 = USART_CR1_UE | USART_CR1_TE | USART_CR1_RE;
     return true;
 }
+
+void uart_putc(char c)
+{
+    while (!(USART2->ISR & USART_ISR_TXE))
+        ;
+    USART2->TDR = (uint8_t)c;
+}
+
+void uart_puts(const char *str)
+{
+    for (uint32_t i = 0; str[i]; i++) {
+        uart_putc(str[i]);
+    }
+}
