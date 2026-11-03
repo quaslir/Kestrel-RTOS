@@ -12,6 +12,7 @@ void led_task(void *arg)
         systick_delay_ms(1000);
         gpio_put(GPIOA, 5, false);
         systick_delay_ms(1000);
+        kestrel_yield();
     }
 }
 
@@ -20,6 +21,7 @@ void uart_task(void *arg)
     while (1) {
         uart_puts("Test\0");
         systick_delay_ms(1000);
+        kestrel_yield();
     }
 }
 

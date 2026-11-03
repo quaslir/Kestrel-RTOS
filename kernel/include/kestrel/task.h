@@ -27,4 +27,5 @@ typedef struct {
 
 kestrel_task_result_t kestrel_new_task(kestrel_task_fn_t task, void *data);
 __attribute__((noreturn)) void kestrel_start(void);
+void kestrel_yield(void);
 #endif

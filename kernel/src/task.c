@@ -1,4 +1,5 @@
 #include "kestrel/task.h"
+#include "port.h"
 static uint8_t task_count = 0;
 __attribute__((aligned(8))) static uint32_t stacks[MAX_TASKS][STACK_SIZE];
 static kestrel_tcb_t tcbs[MAX_TASKS];
@@ -55,8 +56,23 @@ void kestrel_start(void)
         trap();
     }
     kestrel_current = &tcbs[0];
-
-    __asm volatile("svc 0");
+    port_init();
+    __asm volatile("svc 0"); // enter the interrupt handler mode
 
     trap();
+}
+
+void kestrel_schedule(void)
+{
+    if (task_count == 0) {
+        return;
+    }
+    uint8_t current_idx = kestrel_current - tcbs;
+    uint8_t next_idx = (current_idx + 1) % task_count;
+    kestrel_current = &tcbs[next_idx];
+}
+
+void kestrel_yield(void)
+{
+    port_yield();
 }
