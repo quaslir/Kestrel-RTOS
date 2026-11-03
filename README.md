@@ -130,8 +130,8 @@ Each milestone has an **exit criterion**. A milestone is done only when its crit
 **Exit:** two tasks alternate via `yield`; visible as two GPIO traces on the scope.
 
 ### M2 — Preemption · ~1 week
-- [ ] SysTick requests PendSV; round-robin between equal-priority tasks
-- [ ] Critical sections with `BASEPRI`
+- [x] SysTick requests PendSV; round-robin between equal-priority tasks
+- [x] Critical sections with `BASEPRI`
 
 **Exit:** three tasks with infinite loops (no `yield`) each get 1 ms slices.
 
