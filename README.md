@@ -122,10 +122,10 @@ Each milestone has an **exit criterion**. A milestone is done only when its crit
 **Exit:** LED blinks from SysTick, text appears on the virtual COM port, section sizes match expectations.
 
 ### M1 — First context switch · ~2 weeks
-- [ ] Task control block and per-task stacks
-- [ ] Initial (fake) exception frame for new tasks
-- [ ] Start the first task on PSP via `SVC`
-- [ ] Cooperative `yield` through PendSV
+- [x] Task control block and per-task stacks
+- [x] Initial (fake) exception frame for new tasks
+- [x] Start the first task on PSP via `SVC`
+- [x] Cooperative `yield` through PendSV
 
 **Exit:** two tasks alternate via `yield`; visible as two GPIO traces on the scope.
 
