@@ -1,5 +1,6 @@
 #include "port.h"
 #include "stm32f3xx.h"
+#include "kestrel/time.h"
 __attribute__((naked)) void SVC_Handler(void)
 {
     __asm volatile("ldr r0, =kestrel_current\n"
@@ -8,6 +9,9 @@ __attribute__((naked)) void SVC_Handler(void)
                    "ldmia r0!, {r4-r11}\n"
                    "msr psp, r0\n"
                    "ldr lr, =0xFFFFFFFD\n"
+                   "ldr r1, =started\n"
+                   "mov r2, #1\n"
+                   "strb r2, [r1]\n"
                    "bx lr");
 }
 
@@ -32,6 +36,7 @@ __attribute__((naked)) void PendSV_Handler(void)
 void port_init(void)
 {
     SCB->SHP[10] = 0xF0;
+    SCB->SHP[11] = 0xF0;
 }
 
 void port_yield(void)
@@ -39,4 +44,11 @@ void port_yield(void)
     SCB->ICSR = SCB_ICSR_PENDSVSET_Msk;
     __DSB();
     __ISB();
+}
+
+void SysTick_Handler(void)
+{
+    if (kestrel_tick()) {
+        port_yield();
+    }
 }

@@ -4,15 +4,14 @@
 #include "clock.h"
 #include "uart.h"
 #include "kestrel/task.h"
-
+#include "kestrel/time.h"
 void led_task(void *arg)
 {
     while (1) {
         gpio_put(GPIOA, 5, true);
-        systick_delay_ms(1000);
+        kestrel_delay_ms(1000);
         gpio_put(GPIOA, 5, false);
-        systick_delay_ms(1000);
-        kestrel_yield();
+        kestrel_delay_ms(1000);
     }
 }
 
@@ -20,8 +19,7 @@ void uart_task(void *arg)
 {
     while (1) {
         uart_puts("Test\0");
-        systick_delay_ms(1000);
-        kestrel_yield();
+        kestrel_delay_ms(1000);
     }
 }
 

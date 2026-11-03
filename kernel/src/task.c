@@ -1,9 +1,10 @@
 #include "kestrel/task.h"
 #include "port.h"
+#include <stdbool.h>
 static uint8_t task_count = 0;
 __attribute__((aligned(8))) static uint32_t stacks[MAX_TASKS][STACK_SIZE];
 static kestrel_tcb_t tcbs[MAX_TASKS];
-kestrel_tcb_t *kestrel_current = NULLPTR;
+volatile kestrel_tcb_t *kestrel_current = NULLPTR;
 __attribute__((noreturn)) static void trap(void)
 {
     while (1) {
