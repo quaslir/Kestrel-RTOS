@@ -3,7 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 extern volatile bool kestrel_started;
-uint32_t kestrel_get_time(void);
+uint32_t kestrel_get_ticks(void);
 void kestrel_delay_ms(uint32_t ms);
 bool kestrel_tick(void);
 #endif

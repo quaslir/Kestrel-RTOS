@@ -16,8 +16,12 @@ typedef enum {
     KESTREL_ERR_NULL_FN = -2,
 } kestrel_status_t;
 
+typedef enum { KESTREL_TASK_READY, KESTREL_TASK_SLEEPING } kestrel_task_state_t;
+
 typedef struct {
     uint32_t *sp;
+    kestrel_task_state_t state;
+    uint32_t wake_tick;
 } kestrel_tcb_t;
 
 typedef struct {
@@ -28,4 +32,6 @@ typedef struct {
 kestrel_task_result_t kestrel_new_task(kestrel_task_fn_t task, void *data);
 __attribute__((noreturn)) void kestrel_start(void);
 void kestrel_yield(void);
+void kestrel_delay(uint32_t ticks);
+void kestrel_wake_sleeping(uint32_t now);
 #endif

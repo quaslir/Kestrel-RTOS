@@ -1,8 +1,9 @@
 #include "kestrel/time.h"
+#include "kestrel/task.h"
 #include <stdbool.h>
 static volatile uint32_t ticks = 0;
 volatile bool kestrel_started = false;
-uint32_t kestrel_get_time(void)
+uint32_t kestrel_get_ticks(void)
 {
     return ticks;
 }
@@ -16,5 +17,6 @@ void kestrel_delay_ms(uint32_t ms)
 bool kestrel_tick(void)
 {
     ticks++;
+    kestrel_wake_sleeping(ticks);
     return kestrel_started;
 }

@@ -15,6 +15,7 @@ void led_task(void *arg)
         {
             uart_puts("AAAAAAAAAAAAAAAAAAAA\r\n");
         }
+        kestrel_delay(1000);
     }
 }
 
@@ -25,6 +26,8 @@ void uart_task(void *arg)
         {
             uart_puts("BBBBBBBBBBBBBBBBBBBB\r\n");
         }
+
+        kestrel_delay(1000);
     }
 }
 
@@ -35,6 +38,7 @@ void print_task(void *arg)
         {
             uart_puts("CCCCCCCCCCCCCCCCCCCCCCCC\r\n");
         }
+        kestrel_delay(1000);
     }
 }
 
