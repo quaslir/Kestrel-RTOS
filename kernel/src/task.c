@@ -1,6 +1,7 @@
 #include "kestrel/task.h"
 #include "port.h"
 #include <stdbool.h>
+#include "kestrel/critical.h"
 static uint8_t task_count = 0;
 __attribute__((aligned(8))) static uint32_t stacks[MAX_TASKS][STACK_SIZE];
 static kestrel_tcb_t tcbs[MAX_TASKS];
@@ -76,4 +77,13 @@ void kestrel_schedule(void)
 void kestrel_yield(void)
 {
     port_yield();
+}
+
+uint32_t kestrel_enter_critical(void)
+{
+    return port_enter_critical();
+}
+void kestrel_exit_critical(uint32_t prev)
+{
+    port_exit_critical(prev);
 }

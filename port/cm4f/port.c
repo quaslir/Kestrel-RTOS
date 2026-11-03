@@ -1,6 +1,7 @@
 #include "port.h"
 #include "stm32f3xx.h"
 #include "kestrel/time.h"
+#define BASEPRI_TH 0x50
 __attribute__((naked)) void SVC_Handler(void)
 {
     __asm volatile("ldr r0, =kestrel_current\n"
@@ -9,7 +10,7 @@ __attribute__((naked)) void SVC_Handler(void)
                    "ldmia r0!, {r4-r11}\n"
                    "msr psp, r0\n"
                    "ldr lr, =0xFFFFFFFD\n"
-                   "ldr r1, =started\n"
+                   "ldr r1, =kestrel_started\n"
                    "mov r2, #1\n"
                    "strb r2, [r1]\n"
                    "bx lr");
@@ -51,4 +52,17 @@ void SysTick_Handler(void)
     if (kestrel_tick()) {
         port_yield();
     }
+}
+
+uint32_t port_enter_critical(void)
+{
+    uint32_t old_value = __get_BASEPRI();
+    __set_BASEPRI(BASEPRI_TH);
+    __ISB();
+    return old_value;
+}
+
+void port_exit_critical(uint32_t old_basepri)
+{
+    __set_BASEPRI(old_basepri);
 }
