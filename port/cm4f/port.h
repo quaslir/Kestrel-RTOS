@@ -1,6 +1,7 @@
 #ifndef KESTREL_PORT_H
 #define KESTREL_PORT_H
 #include <stdint.h>
+#include "cmsis_gcc.h"
 void port_init(void);
 
 void port_yield(void);
@@ -8,4 +9,9 @@ void port_yield(void);
 void kestrel_schedule(void); // Function is defines in the kernel
 uint32_t port_enter_critical(void);
 void port_exit_critical(uint32_t old_basepri);
+
+static inline uint8_t port_highest_priority(uint32_t mask) // correct only if mask is not zero!
+{
+    return 31 - __CLZ(mask);
+}
 #endif
