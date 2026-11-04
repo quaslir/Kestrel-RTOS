@@ -19,7 +19,6 @@ __attribute__((noreturn)) static void trap(void *arg)
         __asm volatile("wfi");
     }
 }
-
 __attribute__((noreturn)) static void idle_task(void *arg)
 {
     while (1) {
@@ -37,20 +36,6 @@ static void write_null(uint32_t **preg, uint8_t times)
     *preg = reg;
 }
 
-static uint32_t *build_frame(uint32_t *stack_end, kestrel_task_fn_t fn, void *arg)
-{
-    uint32_t *sp = stack_end;
-    *--sp = INITIAL_XPSR;
-    *--sp = (uint32_t)fn & CLEAR_BIT_ZERO;
-    *--sp = (uint32_t)&trap;
-
-    write_null(&sp, 4);
-
-    *--sp = (uint32_t)arg;
-    write_null(&sp, 8);
-    return sp;
-}
-
 static void ready_insert(kestrel_tcb_t *tcb)
 {
     kestrel_tcb_t **head = &ready_head[tcb->priority];
@@ -66,7 +51,7 @@ static void ready_insert(kestrel_tcb_t *tcb)
         (*head)->prev = tcb;
     }
 
-    ready_mask |= (1 << tcb->priority);
+    ready_mask |= (1U << tcb->priority);
 }
 
 static void ready_remove(kestrel_tcb_t *tcb)
@@ -83,6 +68,43 @@ static void ready_remove(kestrel_tcb_t *tcb)
     }
     tcb->next = NULLPTR;
     tcb->prev = NULLPTR;
+}
+
+static void make_ready(kestrel_tcb_t *tcb)
+{
+    tcb->state = KESTREL_TASK_READY;
+    ready_insert(tcb);
+}
+
+static void block_current(kestrel_task_state_t state)
+{
+    kestrel_current->state = state;
+    ready_remove(kestrel_current);
+    kestrel_yield();
+}
+
+__attribute__((noreturn)) static void task_exit(void)
+{
+    KESTREL_CRITICAL
+    {
+        block_current(KESTREL_TASK_DEAD);
+    }
+    while (1) {
+        __asm volatile("wfi");
+    }
+}
+static uint32_t *build_frame(uint32_t *stack_end, kestrel_task_fn_t fn, void *arg)
+{
+    uint32_t *sp = stack_end;
+    *--sp = INITIAL_XPSR;
+    *--sp = (uint32_t)fn & CLEAR_BIT_ZERO;
+    *--sp = (uint32_t)&task_exit;
+
+    write_null(&sp, 4);
+
+    *--sp = (uint32_t)arg;
+    write_null(&sp, 8);
+    return sp;
 }
 
 kestrel_task_result_t kestrel_new_task(kestrel_task_fn_t task, void *data, uint8_t priority)
@@ -110,8 +132,7 @@ kestrel_task_result_t kestrel_new_task(kestrel_task_fn_t task, void *data, uint8
     result.id = task_count;
     tcbs[task_count].sp = sp;
     tcbs[task_count].priority = priority;
-    tcbs[task_count].state = KESTREL_TASK_READY;
-    ready_insert(&tcbs[task_count++]);
+    make_ready(&tcbs[task_count++]);
     return result;
 }
 
@@ -169,9 +190,7 @@ void kestrel_delay(uint32_t ticks)
     KESTREL_CRITICAL
     {
         kestrel_current->wake_tick = kestrel_get_ticks() + ticks;
-        kestrel_current->state = KESTREL_TASK_SLEEPING;
-        ready_remove(kestrel_current);
-        kestrel_yield();
+        block_current(KESTREL_TASK_SLEEPING);
     }
 }
 
@@ -180,8 +199,7 @@ void kestrel_wake_sleeping(uint32_t now)
     for (uint8_t i = 0; i < task_count; i++) {
         kestrel_tcb_t *tcb = &tcbs[i];
         if (tcb->state == KESTREL_TASK_SLEEPING && (int32_t)(now - tcb->wake_tick) >= 0) {
-            tcb->state = KESTREL_TASK_READY;
-            ready_insert(tcb);
+            make_ready(tcb);
         }
     }
 }
@@ -198,9 +216,7 @@ void kestrel_delay_until(uint32_t *last_wake, uint32_t period)
         *last_wake = target_time;
         if ((int32_t)(now - *last_wake) < 0) {
             kestrel_current->wake_tick = target_time;
-            kestrel_current->state = KESTREL_TASK_SLEEPING;
-            ready_remove(kestrel_current);
-            kestrel_yield();
+            block_current(KESTREL_TASK_SLEEPING);
         }
     }
 }

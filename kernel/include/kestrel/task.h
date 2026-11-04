@@ -18,7 +18,7 @@ typedef enum {
     KESTREL_ERR_INVALID_PRIORITY = -3,
 } kestrel_status_t;
 
-typedef enum { KESTREL_TASK_READY, KESTREL_TASK_SLEEPING } kestrel_task_state_t;
+typedef enum { KESTREL_TASK_READY, KESTREL_TASK_SLEEPING, KESTREL_TASK_DEAD } kestrel_task_state_t;
 typedef struct kestrel_tcb {
     uint32_t *sp;
     kestrel_task_state_t state;
