@@ -149,3 +149,21 @@ void kestrel_wake_sleeping(uint32_t now)
         }
     }
 }
+
+void kestrel_delay_until(uint32_t *last_wake, uint32_t period)
+{
+    if (last_wake == NULLPTR || period == 0) {
+        return;
+    }
+    KESTREL_CRITICAL
+    {
+        uint32_t now = kestrel_get_ticks();
+        uint32_t target_time = *last_wake + period;
+        *last_wake = target_time;
+        if ((int32_t)(now - *last_wake) < 0) {
+            kestrel_current->wake_tick = target_time;
+            kestrel_current->state = KESTREL_TASK_SLEEPING;
+            kestrel_yield();
+        }
+    }
+}

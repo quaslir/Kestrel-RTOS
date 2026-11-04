@@ -33,5 +33,6 @@ kestrel_task_result_t kestrel_new_task(kestrel_task_fn_t task, void *data);
 __attribute__((noreturn)) void kestrel_start(void);
 void kestrel_yield(void);
 void kestrel_delay(uint32_t ticks);
+void kestrel_delay_until(uint32_t *last_wake, uint32_t period);
 void kestrel_wake_sleeping(uint32_t now);
 #endif
