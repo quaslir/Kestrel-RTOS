@@ -18,6 +18,7 @@
 #define PRIO_BACKGROUND 1U
 #define PRIO_LED        2U
 #define PRIO_CRITICAL   3U
+#define PRIO_EXIT       3U
 
 #define CRITICAL_PERIOD_TICKS 1U
 #define LED_PERIOD_TICKS      500U
@@ -25,7 +26,7 @@
 
 static volatile uint32_t bg_counter[2];
 static volatile uint32_t critical_runs;
-static volatile uint32_t critical_late_max;
+static volatile uint32_t critical_missed;
 
 static void uart_put_u32(uint32_t value)
 {
@@ -49,16 +50,21 @@ static void critical_task(void *arg)
     bool level = false;
 
     while (1) {
-        uint32_t late = kestrel_get_ticks() - last;
-        if (late > critical_late_max) {
-            critical_late_max = late;
-        }
         critical_runs++;
 
         level = !level;
         gpio_put(PROBE_PORT, PROBE_PIN, level);
-        kestrel_delay_until(&last, CRITICAL_PERIOD_TICKS);
+
+        if (!kestrel_delay_until(&last, CRITICAL_PERIOD_TICKS)) {
+            critical_missed++;
+        }
     }
+}
+
+static void exit_task(void *arg)
+{
+    (void)arg;
+    uart_puts("bye\r\n");
 }
 
 static void reporter_task(void *arg)
@@ -80,8 +86,8 @@ static void reporter_task(void *arg)
         uart_put_u32(last);
         uart_puts(" crit/s=");
         uart_put_u32(crit - prev_crit);
-        uart_puts(" late_max=");
-        uart_put_u32(critical_late_max);
+        uart_puts(" missed=");
+        uart_put_u32(critical_missed);
         uart_puts(" bg0/s=");
         uart_put_u32(bg0 - prev_bg0);
         uart_puts(" bg1/s=");
@@ -132,6 +138,13 @@ static void fail(void)
     }
 }
 
+static void create_task(kestrel_task_fn_t fn, void *arg, uint8_t priority)
+{
+    if (kestrel_new_task(fn, arg, priority).status != KESTREL_OK) {
+        fail();
+    }
+}
+
 int main(void)
 {
     if (clock_setup_72MHz() != CLOCK_OK) {
@@ -145,13 +158,14 @@ int main(void)
     if (!uart_init(115200U)) {
         fail();
     }
-    uart_puts("\r\n=== Kestrel M3.3: priorities ===\r\n");
+    uart_puts("\r\n=== Kestrel M3: priorities + delay_until + task exit ===\r\n");
 
-    kestrel_new_task(background_task, (void *)&bg_counter[0], PRIO_BACKGROUND);
-    kestrel_new_task(background_task, (void *)&bg_counter[1], PRIO_BACKGROUND);
-    kestrel_new_task(led_task, NULL, PRIO_LED);
-    kestrel_new_task(reporter_task, NULL, PRIO_LED);
-    kestrel_new_task(critical_task, NULL, PRIO_CRITICAL);
+    create_task(background_task, (void *)&bg_counter[0], PRIO_BACKGROUND);
+    create_task(background_task, (void *)&bg_counter[1], PRIO_BACKGROUND);
+    create_task(led_task, NULL, PRIO_LED);
+    create_task(reporter_task, NULL, PRIO_LED);
+    create_task(critical_task, NULL, PRIO_CRITICAL);
+    create_task(exit_task, NULL, PRIO_EXIT);
     kestrel_start();
 
     while (1) {

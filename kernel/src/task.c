@@ -1,19 +1,22 @@
 #include "kestrel/task.h"
 #include "port.h"
 #include <stdbool.h>
+#include <stddef.h>
 #include "kestrel/critical.h"
 #include "kestrel/time.h"
+#include "kestrel_internal.h"
 #define IDLE_STACK_SIZE 64
-
+kestrel_tcb_t *volatile kestrel_current = NULL;
+volatile bool kestrel_started = false;
 static uint8_t task_count = 0;
 __attribute__((aligned(8))) static uint32_t stacks[MAX_TASKS][STACK_SIZE];
 static kestrel_tcb_t tcbs[MAX_TASKS];
-kestrel_tcb_t *volatile kestrel_current = NULLPTR;
+
 __attribute__((aligned(8))) static uint32_t idle_stack[IDLE_STACK_SIZE];
 static kestrel_tcb_t idle_tcb;
 static uint32_t ready_mask = 0x0;
 static kestrel_tcb_t *ready_head[KESTREL_MAX_PRIORITY + 1];
-__attribute__((noreturn)) static void trap(void *arg)
+__attribute__((noreturn)) static void kernel_halt(void)
 {
     while (1) {
         __asm volatile("wfi");
@@ -21,6 +24,7 @@ __attribute__((noreturn)) static void trap(void *arg)
 }
 __attribute__((noreturn)) static void idle_task(void *arg)
 {
+    (void)arg;
     while (1) {
         __asm volatile("wfi");
     }
@@ -30,7 +34,7 @@ static void write_null(uint32_t **preg, uint8_t times)
 {
     uint32_t *reg = *preg;
     for (uint8_t i = 0; i < times; i++) {
-        *--reg = NULLPTR;
+        *--reg = 0U;
     }
 
     *preg = reg;
@@ -62,12 +66,12 @@ static void ready_remove(kestrel_tcb_t *tcb)
     kestrel_tcb_t **head = &ready_head[tcb->priority];
     if (tcb->next == tcb) {
         ready_mask &= ~(1U << tcb->priority);
-        *head = NULLPTR;
+        *head = NULL;
     } else if (tcb == *head) {
         *head = tcb->next;
     }
-    tcb->next = NULLPTR;
-    tcb->prev = NULLPTR;
+    tcb->next = NULL;
+    tcb->prev = NULL;
 }
 
 static void make_ready(kestrel_tcb_t *tcb)
@@ -139,18 +143,17 @@ kestrel_task_result_t kestrel_new_task(kestrel_task_fn_t task, void *data, uint8
 void kestrel_start(void)
 {
     if (task_count == 0) {
-        trap(NULLPTR);
+        kernel_halt();
     }
 
-    idle_tcb.sp =
-        build_frame(idle_stack + (sizeof(idle_stack) / sizeof(uint32_t)), &idle_task, NULLPTR);
+    idle_tcb.sp = build_frame(idle_stack + IDLE_STACK_SIZE, &idle_task, NULL);
     kestrel_current = &idle_tcb;
     kestrel_schedule();
     port_init();
     idle_tcb.state = KESTREL_TASK_READY;
     __asm volatile("svc 0"); // enter the interrupt handler mode
 
-    trap(NULLPTR);
+    kernel_halt();
 }
 
 void kestrel_schedule(void)
@@ -204,19 +207,25 @@ void kestrel_wake_sleeping(uint32_t now)
     }
 }
 
-void kestrel_delay_until(uint32_t *last_wake, uint32_t period)
+bool kestrel_delay_until(uint32_t *last_wake, uint32_t period)
 {
-    if (last_wake == NULLPTR || period == 0 || !kestrel_current) {
-        return;
+    if (last_wake == NULL || period == 0 || !kestrel_current) {
+        return false;
     }
+
+    bool delayed = false;
+
     KESTREL_CRITICAL
     {
         uint32_t now = kestrel_get_ticks();
         uint32_t target_time = *last_wake + period;
         *last_wake = target_time;
-        if ((int32_t)(now - *last_wake) < 0) {
+        if ((int32_t)(now - target_time) < 0) {
             kestrel_current->wake_tick = target_time;
             block_current(KESTREL_TASK_SLEEPING);
+            delayed = true;
         }
     }
+
+    return delayed;
 }
