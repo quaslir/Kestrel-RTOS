@@ -5,8 +5,10 @@
 
 bool uart_init(uint32_t baud)
 {
-    // GPIO part
-
+    if (baud == 0) {
+        return false;
+        // GPIO part
+    }
     gpio_enable_port(UART2_PORT);
 
     gpio_set_af(UART2_PORT, UART2_TX_PIN, UART2_AF);
@@ -21,7 +23,7 @@ bool uart_init(uint32_t baud)
     (void)RCC->APB1ENR;
     uint32_t apb1_freq = SystemCoreClock / UART2_PCLK_DIV;
     uint32_t brr = (apb1_freq + (baud / 2)) / baud;
-    if (brr < UART2_MIN_BRR) {
+    if (brr < UART2_MIN_BRR || brr > 0xFFFF) {
         return false;
     }
 
