@@ -1,0 +1,57 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  firmware:
+    name: Firmware (arm-none-eabi)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install toolchain
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-arm-none-eabi libnewlib-arm-none-eabi cmake make
+          arm-none-eabi-gcc --version
+
+      - name: Configure
+        run: cmake -S . -B build -G "Unix Makefiles"
+
+      - name: Build
+        run: cmake --build build -j
+
+      - name: Upload firmware
+        uses: actions/upload-artifact@v4
+        with:
+          name: kestrel-firmware
+          path: |
+            build/app/demo/*.elf
+            build/app/demo/*.bin
+            build/app/demo/*.hex
+            build/app/demo/*.map
+
+  host-tests:
+    name: Host unit tests (Unity)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends cmake make gcc
+
+      - name: Configure
+        run: cmake -S test -B build-test -G "Unix Makefiles"
+
+      - name: Build
+        run: cmake --build build-test -j
+
+      - name: Run tests
+        run: ctest --test-dir build-test --output-on-failure

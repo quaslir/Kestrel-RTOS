@@ -1,5 +1,5 @@
 # Kestrel RTOS
-
+![CI](https://github.com/<логин>/Kestrel-RTOS/actions/workflows/ci.yml/badge.svg)
 **A preemptive real-time kernel for ARM Cortex-M4F, written from scratch in C.**
 Runs on the STM32F303RE (NUCLEO-F303RE). No HAL, no vendor drivers — only CMSIS register headers, a custom startup file and linker script.
 
