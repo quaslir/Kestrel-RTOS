@@ -5,6 +5,7 @@
 #include "kestrel/critical.h"
 #include "kestrel/time.h"
 #include "kestrel_internal.h"
+#include "ready.h"
 #define IDLE_STACK_SIZE 64
 kestrel_tcb_t *volatile kestrel_current = NULL;
 volatile bool kestrel_started = false;
@@ -14,8 +15,7 @@ static kestrel_tcb_t tcbs[MAX_TASKS];
 
 __attribute__((aligned(8))) static uint32_t idle_stack[IDLE_STACK_SIZE];
 static kestrel_tcb_t idle_tcb;
-static uint32_t ready_mask = 0x0;
-static kestrel_tcb_t *ready_head[KESTREL_MAX_PRIORITY + 1];
+
 __attribute__((noreturn)) static void kernel_halt(void)
 {
     while (1) {
@@ -38,40 +38,6 @@ static void write_null(uint32_t **preg, uint8_t times)
     }
 
     *preg = reg;
-}
-
-static void ready_insert(kestrel_tcb_t *tcb)
-{
-    kestrel_tcb_t **head = &ready_head[tcb->priority];
-    if (!*head) {
-        tcb->next = tcb;
-        tcb->prev = tcb;
-        *head = tcb;
-    } else {
-        kestrel_tcb_t *prev = (*head)->prev;
-        prev->next = tcb;
-        tcb->next = *head;
-        tcb->prev = prev;
-        (*head)->prev = tcb;
-    }
-
-    ready_mask |= (1U << tcb->priority);
-}
-
-static void ready_remove(kestrel_tcb_t *tcb)
-{
-    kestrel_tcb_t *prev = tcb->prev;
-    prev->next = tcb->next;
-    tcb->next->prev = prev;
-    kestrel_tcb_t **head = &ready_head[tcb->priority];
-    if (tcb->next == tcb) {
-        ready_mask &= ~(1U << tcb->priority);
-        *head = NULL;
-    } else if (tcb == *head) {
-        *head = tcb->next;
-    }
-    tcb->next = NULL;
-    tcb->prev = NULL;
 }
 
 static void make_ready(kestrel_tcb_t *tcb)
@@ -161,14 +127,12 @@ void kestrel_schedule(void)
     if (task_count == 0) {
         return;
     }
-    if (ready_mask == 0) {
+    kestrel_tcb_t *next_task = ready_pick();
+    if (!next_task) {
         kestrel_current = &idle_tcb;
-        return;
+    } else {
+        kestrel_current = next_task;
     }
-    uint8_t prio = port_highest_priority(ready_mask);
-    kestrel_tcb_t *next_task = ready_head[prio];
-    ready_head[prio] = next_task->next;
-    kestrel_current = next_task;
 }
 
 void kestrel_yield(void)

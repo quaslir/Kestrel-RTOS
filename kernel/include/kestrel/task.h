@@ -7,7 +7,7 @@
 #define KESTREL_TASK_INVALID 0xFFU
 #define CLEAR_BIT_ZERO       (~(1U << 0))
 #define INITIAL_XPSR         (1UL << 24)
-#define KESTREL_MAX_PRIORITY 31
+
 typedef void (*kestrel_task_fn_t)(void *arg);
 
 typedef enum {
