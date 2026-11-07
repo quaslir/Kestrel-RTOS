@@ -44,3 +44,8 @@ kestrel_add_test(test_ready
     test_ready.c
     ${KESTREL_ROOT}/kernel/src/ready.c
 )
+
+kestrel_add_test(test_wait_list
+    test_wait_list.c
+    ${KESTREL_ROOT}/kernel/src/wait_list.c
+)
