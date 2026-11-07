@@ -1,0 +1,56 @@
+#include "kestrel/mutex.h"
+#include "kestrel/critical.h"
+#include "wait_list.h"
+#include "kestrel_internal.h"
+#include <stddef.h>
+kestrel_status_t kestrel_mutex_init(kestrel_mutex_t *mutex)
+{
+    if (!mutex) {
+        return KESTREL_ERR_INVALID_ARG;
+    }
+
+    mutex->owner = NULL;
+    wait_list_init(&mutex->waiters);
+
+    return KESTREL_OK;
+}
+kestrel_status_t kestrel_mutex_unlock(kestrel_mutex_t *mutex)
+{
+    kestrel_status_t result = KESTREL_OK;
+    KESTREL_CRITICAL
+    {
+        if (mutex->owner != kestrel_current) {
+            result = KESTREL_ERR_INVALID_ARG;
+        } else {
+            kestrel_tcb_t *next = kestrel_wake_one(&mutex->waiters);
+            mutex->owner = next;
+        }
+    }
+
+    return result;
+}
+kestrel_status_t kestrel_mutex_lock(kestrel_mutex_t *mutex, uint32_t timeout)
+{
+    kestrel_status_t result = KESTREL_OK;
+    bool blocked = false;
+    KESTREL_CRITICAL
+    {
+        if (!mutex->owner) {
+            mutex->owner = kestrel_current;
+        } else if (mutex->owner == kestrel_current) {
+            result = KESTREL_ERR_INVALID_ARG;
+        } else if (timeout == 0) {
+            result = KESTREL_ERR_TIMEOUT;
+        }
+
+        else {
+            kestrel_block_on(&mutex->waiters, timeout);
+            blocked = true;
+        }
+    }
+
+    if (blocked) {
+        result = kestrel_current->wait_result;
+    }
+    return result;
+}
