@@ -7,7 +7,8 @@
 #define KESTREL_TASK_INVALID 0xFFU
 #define CLEAR_BIT_ZERO       (~(1U << 0))
 #define INITIAL_XPSR         (1UL << 24)
-
+#define KESTREL_NO_WAIT      0U
+#define KESTREL_WAIT_FOREVER 0xFFFFFFFFU
 typedef void (*kestrel_task_fn_t)(void *arg);
 
 typedef enum {
@@ -15,8 +16,9 @@ typedef enum {
     KESTREL_ERR_NO_SLOT = -1,
     KESTREL_ERR_NULL_FN = -2,
     KESTREL_ERR_INVALID_PRIORITY = -3,
-} kestrel_status_t;
+    KESTREL_ERR_TIMEOUT = -4,
 
+} kestrel_status_t;
 typedef struct {
     kestrel_status_t status;
     uint8_t id;

@@ -6,6 +6,7 @@
 #include "kestrel/time.h"
 #include "kestrel_internal.h"
 #include "ready.h"
+#include "wait_list.h"
 #define IDLE_STACK_SIZE 64
 kestrel_tcb_t *volatile kestrel_current = NULL;
 volatile bool kestrel_started = false;
@@ -167,6 +168,11 @@ void kestrel_wake_sleeping(uint32_t now)
         kestrel_tcb_t *tcb = &tcbs[i];
         if (tcb->state == KESTREL_TASK_SLEEPING && (int32_t)(now - tcb->wake_tick) >= 0) {
             make_ready(tcb);
+        } else if (tcb->state == KESTREL_TASK_BLOCKED && tcb->timeout_active &&
+                   (int32_t)(kestrel_get_ticks() - tcb->wake_tick) >= 0) {
+            wait_list_remove(tcb->waiting_on, tcb);
+            tcb->timeout_active = false;
+            make_ready(tcb);
         }
     }
 }
@@ -192,4 +198,31 @@ bool kestrel_delay_until(uint32_t *last_wake, uint32_t period)
     }
 
     return delayed;
+}
+void kestrel_block_on(kestrel_wait_list_t *list, uint32_t timeout)
+{
+    kestrel_current->wait_result = KESTREL_ERR_TIMEOUT;
+    if (timeout != KESTREL_WAIT_FOREVER) {
+        kestrel_current->wake_tick = kestrel_get_ticks() + timeout;
+        kestrel_current->timeout_active = true;
+    } else {
+        kestrel_current->timeout_active = false;
+    }
+    block_current(KESTREL_TASK_BLOCKED);
+    wait_list_insert(list, kestrel_current);
+}
+kestrel_tcb_t *kestrel_wake_one(kestrel_wait_list_t *list)
+{
+    kestrel_tcb_t *tcb = wait_list_pop(list);
+    if (!tcb) {
+        return NULL;
+    }
+    tcb->wait_result = KESTREL_OK;
+    tcb->timeout_active = false;
+    make_ready(tcb);
+    if (tcb->priority > kestrel_current->priority) {
+        kestrel_yield();
+    }
+
+    return tcb;
 }
