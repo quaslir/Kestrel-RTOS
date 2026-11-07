@@ -1,4 +1,5 @@
 #include "wait_list.h"
+#include "kestrel_internal.h"
 #include <stddef.h>
 void wait_list_init(kestrel_wait_list_t *list)
 {

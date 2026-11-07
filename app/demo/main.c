@@ -7,26 +7,26 @@
 #include "systick.h"
 #include "uart.h"
 
+#include "kestrel/semaphore.h"
 #include "kestrel/task.h"
 #include "kestrel/time.h"
 
-#define LED_PORT   GPIOA
-#define LED_PIN    5U
-#define PROBE_PORT GPIOA
-#define PROBE_PIN  6U
+#define LED_PORT GPIOA
+#define LED_PIN  5U
 
 #define PRIO_BACKGROUND 1U
-#define PRIO_LED        2U
-#define PRIO_CRITICAL   3U
-#define PRIO_EXIT       3U
+#define PRIO_PRODUCER   2U
+#define PRIO_CONSUMER   3U
 
-#define CRITICAL_PERIOD_TICKS 1U
-#define LED_PERIOD_TICKS      500U
-#define REPORT_PERIOD_TICKS   1000U
+#define PRODUCER_ENABLED       false
+#define PRODUCER_PERIOD_TICKS  500U
+#define CONSUMER_TIMEOUT_TICKS 2000U
+
+static kestrel_sem_t data_ready;
 
 static volatile uint32_t bg_counter[2];
-static volatile uint32_t critical_runs;
-static volatile uint32_t critical_missed;
+static volatile uint32_t last_give_tick;
+static volatile uint32_t give_count;
 
 static void uart_put_u32(uint32_t value)
 {
@@ -43,73 +43,65 @@ static void uart_put_u32(uint32_t value)
     }
 }
 
-static void critical_task(void *arg)
+static void consumer_task(void *arg)
 {
     (void)arg;
-    uint32_t last = kestrel_get_ticks();
-    bool level = false;
+    uint32_t prev = kestrel_get_ticks();
+    uint32_t got = 0;
+    uint32_t timeouts = 0;
 
     while (1) {
-        critical_runs++;
+        kestrel_status_t status = kestrel_sem_take(&data_ready, CONSUMER_TIMEOUT_TICKS);
+        uint32_t now = kestrel_get_ticks();
 
-        level = !level;
-        gpio_put(PROBE_PORT, PROBE_PIN, level);
-
-        if (!kestrel_delay_until(&last, CRITICAL_PERIOD_TICKS)) {
-            critical_missed++;
+        if (status == KESTREL_OK) {
+            got++;
+            uart_puts("got     t=");
+            uart_put_u32(now);
+            uart_puts(" dt=");
+            uart_put_u32(now - prev);
+            uart_puts(" lat=");
+            uart_put_u32(now - last_give_tick);
+        } else if (status == KESTREL_ERR_TIMEOUT) {
+            timeouts++;
+            uart_puts("timeout t=");
+            uart_put_u32(now);
+            uart_puts(" dt=");
+            uart_put_u32(now - prev);
+        } else {
+            uart_puts("error   t=");
+            uart_put_u32(now);
         }
-    }
-}
 
-static void exit_task(void *arg)
-{
-    (void)arg;
-    uart_puts("bye\r\n");
-}
-
-static void reporter_task(void *arg)
-{
-    (void)arg;
-    uint32_t last = kestrel_get_ticks();
-    uint32_t prev_crit = critical_runs;
-    uint32_t prev_bg0 = bg_counter[0];
-    uint32_t prev_bg1 = bg_counter[1];
-
-    while (1) {
-        kestrel_delay_until(&last, REPORT_PERIOD_TICKS);
-
-        uint32_t crit = critical_runs;
-        uint32_t bg0 = bg_counter[0];
-        uint32_t bg1 = bg_counter[1];
-
-        uart_puts("t=");
-        uart_put_u32(last);
-        uart_puts(" crit/s=");
-        uart_put_u32(crit - prev_crit);
-        uart_puts(" missed=");
-        uart_put_u32(critical_missed);
-        uart_puts(" bg0/s=");
-        uart_put_u32(bg0 - prev_bg0);
-        uart_puts(" bg1/s=");
-        uart_put_u32(bg1 - prev_bg1);
+        uart_puts(" got=");
+        uart_put_u32(got);
+        uart_puts(" timeouts=");
+        uart_put_u32(timeouts);
+        uart_puts(" gives=");
+        uart_put_u32(give_count);
         uart_puts("\r\n");
 
-        prev_crit = crit;
-        prev_bg0 = bg0;
-        prev_bg1 = bg1;
+        prev = now;
     }
 }
 
-static void led_task(void *arg)
+static void producer_task(void *arg)
 {
     (void)arg;
     uint32_t last = kestrel_get_ticks();
-    bool on = false;
+    bool led = false;
 
     while (1) {
-        on = !on;
-        gpio_put(LED_PORT, LED_PIN, on);
-        kestrel_delay_until(&last, LED_PERIOD_TICKS);
+        kestrel_delay_until(&last, PRODUCER_PERIOD_TICKS);
+
+        led = !led;
+        gpio_put(LED_PORT, LED_PIN, led);
+
+#if PRODUCER_ENABLED
+        last_give_tick = kestrel_get_ticks();
+        give_count++;
+        (void)kestrel_sem_give(&data_ready);
+#endif
     }
 }
 
@@ -153,19 +145,20 @@ int main(void)
     systick_init(SystemCoreClock);
 
     output_pin_init(LED_PORT, LED_PIN);
-    output_pin_init(PROBE_PORT, PROBE_PIN);
 
     if (!uart_init(115200U)) {
         fail();
     }
-    uart_puts("\r\n=== Kestrel M3: priorities + delay_until + task exit ===\r\n");
+    uart_puts("\r\n=== Kestrel M4.2: semaphore ===\r\n");
+
+    if (kestrel_sem_init(&data_ready, 0U, 1U) != KESTREL_OK) {
+        fail();
+    }
 
     create_task(background_task, (void *)&bg_counter[0], PRIO_BACKGROUND);
     create_task(background_task, (void *)&bg_counter[1], PRIO_BACKGROUND);
-    create_task(led_task, NULL, PRIO_LED);
-    create_task(reporter_task, NULL, PRIO_LED);
-    create_task(critical_task, NULL, PRIO_CRITICAL);
-    create_task(exit_task, NULL, PRIO_EXIT);
+    create_task(producer_task, NULL, PRIO_PRODUCER);
+    create_task(consumer_task, NULL, PRIO_CONSUMER);
     kestrel_start();
 
     while (1) {
