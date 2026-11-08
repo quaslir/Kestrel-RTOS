@@ -103,6 +103,7 @@ kestrel_task_result_t kestrel_new_task(kestrel_task_fn_t task, void *data, uint8
     result.id = task_count;
     tcbs[task_count].sp = sp;
     tcbs[task_count].priority = priority;
+    tcbs[task_count].base_priority = priority;
     make_ready(&tcbs[task_count++]);
     return result;
 }
@@ -225,4 +226,37 @@ kestrel_tcb_t *kestrel_wake_one(kestrel_wait_list_t *list)
     }
 
     return tcb;
+}
+
+void kestrel_set_priority(kestrel_tcb_t *tcb, uint8_t new_priority)
+{
+    if (!tcb) {
+        return;
+    }
+    if (new_priority == tcb->priority) {
+        return;
+    }
+
+    switch (tcb->state) {
+    case KESTREL_TASK_READY:
+        ready_remove(tcb);
+        tcb->priority = new_priority;
+        ready_insert(tcb);
+        if (tcb == kestrel_current) {
+            uint8_t top = port_highest_priority(ready_get_mask());
+            if (top > tcb->priority) {
+                port_yield();
+            }
+        }
+        break;
+    case KESTREL_TASK_BLOCKED: {
+        kestrel_wait_list_t *list = tcb->waiting_on;
+        wait_list_remove(list, tcb);
+        tcb->priority = new_priority;
+        wait_list_insert(list, tcb);
+        break;
+    }
+    default:
+        tcb->priority = new_priority;
+    }
 }

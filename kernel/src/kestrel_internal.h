@@ -22,6 +22,7 @@ typedef struct kestrel_tcb {
     struct kestrel_wait_list *waiting_on;
     kestrel_status_t wait_result;
     bool timeout_active;
+    uint8_t base_priority;
 } kestrel_tcb_t;
 
 extern volatile bool kestrel_started;
@@ -30,5 +31,7 @@ bool kestrel_tick(void);
 void kestrel_schedule(void);
 void kestrel_wake_sleeping(uint32_t now);
 void kestrel_block_on(struct kestrel_wait_list *list, uint32_t timeout);
+void kestrel_set_priority(kestrel_tcb_t *tcb,
+                          uint8_t new_priority); // call only with KESTREL_CRITICAL
 kestrel_tcb_t *kestrel_wake_one(struct kestrel_wait_list *list);
 #endif
