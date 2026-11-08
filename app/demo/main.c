@@ -7,32 +7,39 @@
 #include "systick.h"
 #include "uart.h"
 
-#include "kestrel/mutex.h"
+#include "kestrel/queue.h"
 #include "kestrel/task.h"
 #include "kestrel/time.h"
 
 #define LED_PORT GPIOA
 #define LED_PIN  5U
 
-#define PRIO_LOW    1U
-#define PRIO_MEDIUM 2U
-#define PRIO_HIGH   3U
+#define MODE_FAST_PRODUCER 1
+#define MODE_FAST_CONSUMER 2
+#define MODE               MODE_FAST_CONSUMER
 
-#define PERIOD_TICKS      1000U
-#define HIGH_OFFSET       10U
-#define MEDIUM_OFFSET     20U
-#define LOW_HOLD_TICKS    50U
-#define MEDIUM_SPIN_TICKS 300U
+#define PRIO_REPORTER 1U
+#define PRIO_PRODUCER 2U
+#define PRIO_CONSUMER 3U
 
-#define HIGH_TIMEOUT_TICKS KESTREL_WAIT_FOREVER
+#define QUEUE_CAPACITY      4U
+#define SLOW_PERIOD_TICKS   100U
+#define REPORT_PERIOD_TICKS 1000U
 
-static kestrel_mutex_t m;
+typedef struct {
+    uint32_t seq;
+    uint32_t tick;
+} item_t;
 
-static volatile uint32_t low_start;
-static volatile uint32_t unlock_tick;
-static volatile uint32_t high_wait;
-static volatile kestrel_status_t high_status;
-static volatile uint32_t medium_start;
+static item_t queue_storage[QUEUE_CAPACITY];
+static kestrel_queue_t q;
+
+static volatile uint32_t sent;
+static volatile uint32_t received;
+static volatile uint32_t order_errors;
+static volatile uint32_t status_errors;
+static volatile uint32_t last_lat;
+static volatile uint32_t max_lat;
 
 static void uart_put_u32(uint32_t value)
 {
@@ -65,70 +72,84 @@ static void fail(void)
     }
 }
 
-static void low_task(void *arg)
+static void producer_task(void *arg)
 {
     (void)arg;
-    uint32_t last = 0;
+    uint32_t seq = 0;
+#if MODE == MODE_FAST_CONSUMER
+    uint32_t last = kestrel_get_ticks();
+#endif
 
     while (1) {
-        kestrel_delay_until(&last, PERIOD_TICKS);
+#if MODE == MODE_FAST_CONSUMER
+        kestrel_delay_until(&last, SLOW_PERIOD_TICKS);
+#endif
+        item_t item = { .seq = seq, .tick = kestrel_get_ticks() };
+        if (kestrel_queue_send(&q, &item, KESTREL_WAIT_FOREVER) == KESTREL_OK) {
+            seq++;
+            sent++;
+        } else {
+            status_errors++;
+        }
+    }
+}
 
-        if (kestrel_mutex_lock(&m, KESTREL_WAIT_FOREVER) != KESTREL_OK) {
-            fail();
+static void consumer_task(void *arg)
+{
+    (void)arg;
+    uint32_t expected = 0;
+#if MODE == MODE_FAST_PRODUCER
+    uint32_t last = kestrel_get_ticks();
+#endif
+
+    while (1) {
+#if MODE == MODE_FAST_PRODUCER
+        kestrel_delay_until(&last, SLOW_PERIOD_TICKS);
+#endif
+        item_t item;
+        if (kestrel_queue_receive(&q, &item, KESTREL_WAIT_FOREVER) != KESTREL_OK) {
+            status_errors++;
+            continue;
         }
-        low_start = kestrel_get_ticks();
-        while ((kestrel_get_ticks() - low_start) < LOW_HOLD_TICKS) {
+
+        if (item.seq != expected) {
+            order_errors++;
         }
-        unlock_tick = kestrel_get_ticks();
-        if (kestrel_mutex_unlock(&m) != KESTREL_OK) {
-            fail();
+        expected = item.seq + 1U;
+
+        last_lat = kestrel_get_ticks() - item.tick;
+        if (last_lat > max_lat) {
+            max_lat = last_lat;
         }
+        received++;
+    }
+}
+
+static void reporter_task(void *arg)
+{
+    (void)arg;
+    uint32_t last = kestrel_get_ticks();
+
+    while (1) {
+        kestrel_delay_until(&last, REPORT_PERIOD_TICKS);
 
         uart_puts("t=");
-        uart_put_u32(low_start);
-        uart_puts(high_status == KESTREL_OK ? " high=OK" : " high=TIMEOUT");
-        uart_puts(" wait=");
-        uart_put_u32(high_wait);
-        uart_puts(" med_start=");
-        uart_put_u32(medium_start - low_start);
-        uart_puts(" med_lat=");
-        uart_put_u32(medium_start - unlock_tick);
+        uart_put_u32(last);
+        uart_puts(" sent=");
+        uart_put_u32(sent);
+        uart_puts(" recv=");
+        uart_put_u32(received);
+        uart_puts(" in_q=");
+        uart_put_u32(q.count);
+        uart_puts(" order_err=");
+        uart_put_u32(order_errors);
+        uart_puts(" status_err=");
+        uart_put_u32(status_errors);
+        uart_puts(" lat=");
+        uart_put_u32(last_lat);
+        uart_puts(" max_lat=");
+        uart_put_u32(max_lat);
         uart_puts("\r\n");
-    }
-}
-
-static void medium_task(void *arg)
-{
-    (void)arg;
-    uint32_t last = MEDIUM_OFFSET;
-
-    while (1) {
-        kestrel_delay_until(&last, PERIOD_TICKS);
-
-        medium_start = kestrel_get_ticks();
-        while ((kestrel_get_ticks() - medium_start) < MEDIUM_SPIN_TICKS) {
-        }
-    }
-}
-
-static void high_task(void *arg)
-{
-    (void)arg;
-    uint32_t last = HIGH_OFFSET;
-
-    while (1) {
-        kestrel_delay_until(&last, PERIOD_TICKS);
-
-        uint32_t before = kestrel_get_ticks();
-        kestrel_status_t status = kestrel_mutex_lock(&m, HIGH_TIMEOUT_TICKS);
-        high_wait = kestrel_get_ticks() - before;
-        high_status = status;
-
-        if (status == KESTREL_OK) {
-            if (kestrel_mutex_unlock(&m) != KESTREL_OK) {
-                fail();
-            }
-        }
     }
 }
 
@@ -151,15 +172,15 @@ int main(void)
     if (!uart_init(115200U)) {
         fail();
     }
-    uart_puts("\r\n=== Kestrel M4.4: priority inheritance ===\r\n");
+    uart_puts("\r\n=== Kestrel M4.6: queue ===\r\n");
 
-    if (kestrel_mutex_init(&m) != KESTREL_OK) {
+    if (kestrel_queue_init(&q, queue_storage, sizeof(item_t), QUEUE_CAPACITY) != KESTREL_OK) {
         fail();
     }
 
-    create_task(low_task, NULL, PRIO_LOW);
-    create_task(medium_task, NULL, PRIO_MEDIUM);
-    create_task(high_task, NULL, PRIO_HIGH);
+    create_task(reporter_task, NULL, PRIO_REPORTER);
+    create_task(producer_task, NULL, PRIO_PRODUCER);
+    create_task(consumer_task, NULL, PRIO_CONSUMER);
     kestrel_start();
 
     while (1) {

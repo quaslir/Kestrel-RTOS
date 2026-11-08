@@ -23,6 +23,7 @@ typedef struct kestrel_tcb {
     kestrel_status_t wait_result;
     bool timeout_active;
     uint8_t base_priority;
+    void *wait_data;
 } kestrel_tcb_t;
 
 extern volatile bool kestrel_started;
