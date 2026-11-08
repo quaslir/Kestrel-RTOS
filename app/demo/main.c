@@ -7,39 +7,23 @@
 #include "systick.h"
 #include "uart.h"
 
-#include "kestrel/queue.h"
 #include "kestrel/task.h"
 #include "kestrel/time.h"
 
 #define LED_PORT GPIOA
 #define LED_PIN  5U
 
-#define MODE_FAST_PRODUCER 1
-#define MODE_FAST_CONSUMER 2
-#define MODE               MODE_FAST_CONSUMER
+#define PRIO_WORKER   1U
+#define PRIO_REPORTER 2U
 
-#define PRIO_REPORTER 1U
-#define PRIO_PRODUCER 2U
-#define PRIO_CONSUMER 3U
-
-#define QUEUE_CAPACITY      4U
-#define SLOW_PERIOD_TICKS   100U
+#define FPU_TASKS           3U
+#define SPIN_LOOPS          100000U
 #define REPORT_PERIOD_TICKS 1000U
 
-typedef struct {
-    uint32_t seq;
-    uint32_t tick;
-} item_t;
-
-static item_t queue_storage[QUEUE_CAPACITY];
-static kestrel_queue_t q;
-
-static volatile uint32_t sent;
-static volatile uint32_t received;
-static volatile uint32_t order_errors;
-static volatile uint32_t status_errors;
-static volatile uint32_t last_lat;
-static volatile uint32_t max_lat;
+static volatile uint32_t fpu_checks[FPU_TASKS];
+static volatile uint32_t fpu_errors[FPU_TASKS];
+static volatile uint32_t int_checks;
+static volatile uint32_t int_errors;
 
 static void uart_put_u32(uint32_t value)
 {
@@ -72,56 +56,63 @@ static void fail(void)
     }
 }
 
-static void producer_task(void *arg)
+static void fpu_task(void *arg)
 {
-    (void)arg;
-    uint32_t seq = 0;
-#if MODE == MODE_FAST_CONSUMER
-    uint32_t last = kestrel_get_ticks();
-#endif
+    uint32_t id = (uint32_t)arg;
+    uint32_t pattern[32];
+    uint32_t result[32];
+    uint32_t round = 0;
 
     while (1) {
-#if MODE == MODE_FAST_CONSUMER
-        kestrel_delay_until(&last, SLOW_PERIOD_TICKS);
-#endif
-        item_t item = { .seq = seq, .tick = kestrel_get_ticks() };
-        if (kestrel_queue_send(&q, &item, KESTREL_WAIT_FOREVER) == KESTREL_OK) {
-            seq++;
-            sent++;
-        } else {
-            status_errors++;
+        for (uint32_t i = 0; i < 32U; i++) {
+            pattern[i] = (id << 28) | (i << 20) | (round & 0xFFFFFU);
         }
+
+        uint32_t n = SPIN_LOOPS;
+        __asm volatile("vldmia %[in], {s0-s31}\n"
+                       "1:\n"
+                       "subs %[n], %[n], #1\n"
+                       "bne 1b\n"
+                       "vstmia %[out], {s0-s31}\n"
+                       : [n] "+r"(n)
+                       : [in] "r"(pattern), [out] "r"(result)
+                       : "memory", "cc", "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d9",
+                         "d10", "d11", "d12", "d13", "d14", "d15");
+
+        for (uint32_t i = 0; i < 32U; i++) {
+            if (result[i] != pattern[i]) {
+                fpu_errors[id]++;
+                break;
+            }
+        }
+        fpu_checks[id]++;
+        round++;
     }
 }
 
-static void consumer_task(void *arg)
+static void int_task(void *arg)
 {
     (void)arg;
-    uint32_t expected = 0;
-#if MODE == MODE_FAST_PRODUCER
-    uint32_t last = kestrel_get_ticks();
-#endif
+    uint32_t round = 0;
 
     while (1) {
-#if MODE == MODE_FAST_PRODUCER
-        kestrel_delay_until(&last, SLOW_PERIOD_TICKS);
-#endif
-        item_t item;
-        if (kestrel_queue_receive(&q, &item, KESTREL_WAIT_FOREVER) != KESTREL_OK) {
-            status_errors++;
-            continue;
-        }
+        uint32_t n = SPIN_LOOPS;
+        uint32_t r4_in = 0xA0000000U | round;
+        uint32_t r4_out;
+        __asm volatile("mov r4, %[v]\n"
+                       "1:\n"
+                       "subs %[n], %[n], #1\n"
+                       "bne 1b\n"
+                       "mov %[out], r4\n"
+                       : [n] "+r"(n), [out] "=r"(r4_out)
+                       : [v] "r"(r4_in)
+                       : "cc", "r4");
 
-        if (item.seq != expected) {
-            order_errors++;
+        if (r4_out != r4_in) {
+            int_errors++;
         }
-        expected = item.seq + 1U;
-
-        last_lat = kestrel_get_ticks() - item.tick;
-        if (last_lat > max_lat) {
-            max_lat = last_lat;
-        }
-        received++;
+        int_checks++;
+        round++;
     }
 }
 
@@ -134,21 +125,20 @@ static void reporter_task(void *arg)
         kestrel_delay_until(&last, REPORT_PERIOD_TICKS);
 
         uart_puts("t=");
-        uart_put_u32(last);
-        uart_puts(" sent=");
-        uart_put_u32(sent);
-        uart_puts(" recv=");
-        uart_put_u32(received);
-        uart_puts(" in_q=");
-        uart_put_u32(q.count);
-        uart_puts(" order_err=");
-        uart_put_u32(order_errors);
-        uart_puts(" status_err=");
-        uart_put_u32(status_errors);
-        uart_puts(" lat=");
-        uart_put_u32(last_lat);
-        uart_puts(" max_lat=");
-        uart_put_u32(max_lat);
+        uart_put_u32(last / 1000U);
+        uart_puts("s");
+        for (uint32_t i = 0; i < FPU_TASKS; i++) {
+            uart_puts(" f");
+            uart_put_u32(i);
+            uart_puts("=");
+            uart_put_u32(fpu_checks[i]);
+            uart_puts("/");
+            uart_put_u32(fpu_errors[i]);
+        }
+        uart_puts(" int=");
+        uart_put_u32(int_checks);
+        uart_puts("/");
+        uart_put_u32(int_errors);
         uart_puts("\r\n");
     }
 }
@@ -172,15 +162,13 @@ int main(void)
     if (!uart_init(115200U)) {
         fail();
     }
-    uart_puts("\r\n=== Kestrel M4.6: queue ===\r\n");
+    uart_puts("\r\n=== Kestrel M5.1: FPU context ===\r\n");
 
-    if (kestrel_queue_init(&q, queue_storage, sizeof(item_t), QUEUE_CAPACITY) != KESTREL_OK) {
-        fail();
+    for (uint32_t i = 0; i < FPU_TASKS; i++) {
+        create_task(fpu_task, (void *)i, PRIO_WORKER);
     }
-
+    create_task(int_task, NULL, PRIO_WORKER);
     create_task(reporter_task, NULL, PRIO_REPORTER);
-    create_task(producer_task, NULL, PRIO_PRODUCER);
-    create_task(consumer_task, NULL, PRIO_CONSUMER);
     kestrel_start();
 
     while (1) {

@@ -75,6 +75,7 @@ static uint32_t *build_frame(uint32_t *stack_end, kestrel_task_fn_t fn, void *ar
 
     *--sp = (uint32_t)arg;
     write_null(&sp, 8);
+    *--sp = PORT_EXC_RETURN_THREAD_PSP;
     return sp;
 }
 
