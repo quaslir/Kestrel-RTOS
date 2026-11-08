@@ -78,3 +78,8 @@ void port_exit_critical(uint32_t old_basepri)
 {
     __set_BASEPRI(old_basepri);
 }
+
+bool port_in_isr(void)
+{
+    return __get_IPSR() != 0;
+}

@@ -2,28 +2,44 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "stm32f3xx.h"
+
 #include "clock.h"
 #include "gpio.h"
 #include "systick.h"
 #include "uart.h"
 
+#include "kestrel/mutex.h"
+#include "kestrel/semaphore.h"
 #include "kestrel/task.h"
 #include "kestrel/time.h"
 
 #define LED_PORT GPIOA
 #define LED_PIN  5U
 
-#define PRIO_WORKER   1U
-#define PRIO_REPORTER 2U
+#define PRIO_BACKGROUND 1U
+#define PRIO_REPORTER   2U
+#define PRIO_HANDLER    3U
 
-#define FPU_TASKS           3U
-#define SPIN_LOOPS          100000U
+#define TIM2_IRQ_PRIO       6U
+#define TIM2_PSC            (72U - 1U)
+#define TIM2_ARR            (10000U - 1U)
 #define REPORT_PERIOD_TICKS 1000U
+#define CPU_MHZ             72U
 
-static volatile uint32_t fpu_checks[FPU_TASKS];
-static volatile uint32_t fpu_errors[FPU_TASKS];
-static volatile uint32_t int_checks;
-static volatile uint32_t int_errors;
+static kestrel_sem_t irq_sem;
+static kestrel_sem_t never_sem;
+static kestrel_mutex_t isr_mutex;
+
+static volatile uint32_t isr_cycles;
+static volatile uint32_t irq_count;
+static volatile uint32_t wake_count;
+static volatile uint32_t lat_last;
+static volatile uint32_t lat_min = 0xFFFFFFFFU;
+static volatile uint32_t lat_max;
+static volatile kestrel_status_t isr_take_status = KESTREL_OK;
+static volatile kestrel_status_t isr_lock_status = KESTREL_OK;
+static volatile uint32_t bg_counter[2];
 
 static void uart_put_u32(uint32_t value)
 {
@@ -56,64 +72,79 @@ static void fail(void)
     }
 }
 
-static void fpu_task(void *arg)
+static void dwt_init(void)
 {
-    uint32_t id = (uint32_t)arg;
-    uint32_t pattern[32];
-    uint32_t result[32];
-    uint32_t round = 0;
+    CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+    DWT->CYCCNT = 0U;
+    DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
+}
+
+static void tim2_init(void)
+{
+    RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
+    (void)RCC->APB1ENR;
+
+    TIM2->PSC = TIM2_PSC;
+    TIM2->ARR = TIM2_ARR;
+    TIM2->EGR = TIM_EGR_UG;
+    TIM2->SR = 0U;
+    TIM2->DIER = TIM_DIER_UIE;
+
+    NVIC_SetPriority(TIM2_IRQn, TIM2_IRQ_PRIO);
+    NVIC_EnableIRQ(TIM2_IRQn);
+
+    TIM2->CR1 = TIM_CR1_CEN;
+}
+
+void TIM2_IRQHandler(void)
+{
+    TIM2->SR = ~TIM_SR_UIF;
+    irq_count++;
+
+    if (irq_count == 1U) {
+        isr_take_status = kestrel_sem_take(&never_sem, 10U);
+        isr_lock_status = kestrel_mutex_lock(&isr_mutex, KESTREL_NO_WAIT);
+    }
+
+    isr_cycles = DWT->CYCCNT;
+    (void)kestrel_sem_give(&irq_sem);
+}
+
+static void handler_task(void *arg)
+{
+    (void)arg;
+    tim2_init();
 
     while (1) {
-        for (uint32_t i = 0; i < 32U; i++) {
-            pattern[i] = (id << 28) | (i << 20) | (round & 0xFFFFFU);
+        if (kestrel_sem_take(&irq_sem, KESTREL_WAIT_FOREVER) != KESTREL_OK) {
+            fail();
         }
+        uint32_t lat = DWT->CYCCNT - isr_cycles;
 
-        uint32_t n = SPIN_LOOPS;
-        __asm volatile("vldmia %[in], {s0-s31}\n"
-                       "1:\n"
-                       "subs %[n], %[n], #1\n"
-                       "bne 1b\n"
-                       "vstmia %[out], {s0-s31}\n"
-                       : [n] "+r"(n)
-                       : [in] "r"(pattern), [out] "r"(result)
-                       : "memory", "cc", "d0", "d1", "d2", "d3", "d4", "d5", "d6", "d7", "d8", "d9",
-                         "d10", "d11", "d12", "d13", "d14", "d15");
-
-        for (uint32_t i = 0; i < 32U; i++) {
-            if (result[i] != pattern[i]) {
-                fpu_errors[id]++;
-                break;
-            }
+        lat_last = lat;
+        if (lat < lat_min) {
+            lat_min = lat;
         }
-        fpu_checks[id]++;
-        round++;
+        if (lat > lat_max) {
+            lat_max = lat;
+        }
+        wake_count++;
     }
 }
 
-static void int_task(void *arg)
+static void background_task(void *arg)
 {
-    (void)arg;
-    uint32_t round = 0;
+    volatile uint32_t *counter = (volatile uint32_t *)arg;
 
     while (1) {
-        uint32_t n = SPIN_LOOPS;
-        uint32_t r4_in = 0xA0000000U | round;
-        uint32_t r4_out;
-        __asm volatile("mov r4, %[v]\n"
-                       "1:\n"
-                       "subs %[n], %[n], #1\n"
-                       "bne 1b\n"
-                       "mov %[out], r4\n"
-                       : [n] "+r"(n), [out] "=r"(r4_out)
-                       : [v] "r"(r4_in)
-                       : "cc", "r4");
-
-        if (r4_out != r4_in) {
-            int_errors++;
-        }
-        int_checks++;
-        round++;
+        (*counter)++;
     }
+}
+
+static void put_status(const char *name, kestrel_status_t status)
+{
+    uart_puts(name);
+    uart_puts(status == KESTREL_ERR_IN_ISR ? "=IN_ISR" : "=WRONG");
 }
 
 static void reporter_task(void *arg)
@@ -126,19 +157,22 @@ static void reporter_task(void *arg)
 
         uart_puts("t=");
         uart_put_u32(last / 1000U);
-        uart_puts("s");
-        for (uint32_t i = 0; i < FPU_TASKS; i++) {
-            uart_puts(" f");
-            uart_put_u32(i);
-            uart_puts("=");
-            uart_put_u32(fpu_checks[i]);
-            uart_puts("/");
-            uart_put_u32(fpu_errors[i]);
-        }
-        uart_puts(" int=");
-        uart_put_u32(int_checks);
-        uart_puts("/");
-        uart_put_u32(int_errors);
+        uart_puts("s irq=");
+        uart_put_u32(irq_count);
+        uart_puts(" wake=");
+        uart_put_u32(wake_count);
+        uart_puts(" lat=");
+        uart_put_u32(lat_last);
+        uart_puts(" min=");
+        uart_put_u32(lat_min);
+        uart_puts(" max=");
+        uart_put_u32(lat_max);
+        uart_puts(" cyc max_us=");
+        uart_put_u32(lat_max / CPU_MHZ);
+        uart_puts(" ");
+        put_status("take", isr_take_status);
+        uart_puts(" ");
+        put_status("lock", isr_lock_status);
         uart_puts("\r\n");
     }
 }
@@ -156,19 +190,29 @@ int main(void)
         fail();
     }
     systick_init(SystemCoreClock);
+    dwt_init();
 
     output_pin_init(LED_PORT, LED_PIN);
 
     if (!uart_init(115200U)) {
         fail();
     }
-    uart_puts("\r\n=== Kestrel M5.1: FPU context ===\r\n");
+    uart_puts("\r\n=== Kestrel M5.2: ISR -> task latency ===\r\n");
 
-    for (uint32_t i = 0; i < FPU_TASKS; i++) {
-        create_task(fpu_task, (void *)i, PRIO_WORKER);
+    if (kestrel_sem_init(&irq_sem, 0U, 1U) != KESTREL_OK) {
+        fail();
     }
-    create_task(int_task, NULL, PRIO_WORKER);
+    if (kestrel_sem_init(&never_sem, 0U, 1U) != KESTREL_OK) {
+        fail();
+    }
+    if (kestrel_mutex_init(&isr_mutex) != KESTREL_OK) {
+        fail();
+    }
+
+    create_task(background_task, (void *)&bg_counter[0], PRIO_BACKGROUND);
+    create_task(background_task, (void *)&bg_counter[1], PRIO_BACKGROUND);
     create_task(reporter_task, NULL, PRIO_REPORTER);
+    create_task(handler_task, NULL, PRIO_HANDLER);
     kestrel_start();
 
     while (1) {

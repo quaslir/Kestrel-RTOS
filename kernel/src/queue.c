@@ -3,6 +3,7 @@
 #include "kestrel/critical.h"
 #include "wait_list.h"
 #include <string.h>
+#include "port.h"
 kestrel_status_t kestrel_queue_init(kestrel_queue_t *q, void *storage, uint32_t item_size,
                                     uint32_t capacity)
 {
@@ -40,9 +41,13 @@ kestrel_status_t kestrel_queue_send(kestrel_queue_t *q, const void *item, uint32
         } else if (timeout == KESTREL_NO_WAIT) {
             result = KESTREL_ERR_TIMEOUT;
         } else {
-            kestrel_current->wait_data = (void *)item;
-            kestrel_block_on(&q->senders, timeout);
-            blocked = true;
+            if (port_in_isr()) {
+                result = KESTREL_ERR_IN_ISR;
+            } else {
+                kestrel_current->wait_data = (void *)item;
+                kestrel_block_on(&q->senders, timeout);
+                blocked = true;
+            }
         }
     }
 
@@ -73,9 +78,13 @@ kestrel_status_t kestrel_queue_receive(kestrel_queue_t *q, void *buffer, uint32_
         } else if (timeout == KESTREL_NO_WAIT) {
             result = KESTREL_ERR_TIMEOUT;
         } else {
-            kestrel_current->wait_data = buffer;
-            kestrel_block_on(&q->receivers, timeout);
-            blocked = true;
+            if (port_in_isr()) {
+                result = KESTREL_ERR_IN_ISR;
+            } else {
+                kestrel_current->wait_data = buffer;
+                kestrel_block_on(&q->receivers, timeout);
+                blocked = true;
+            }
         }
     }
     if (blocked) {

@@ -2,6 +2,7 @@
 #include "kestrel/critical.h"
 #include "kestrel_internal.h"
 #include "wait_list.h"
+#include "port.h"
 kestrel_status_t kestrel_sem_init(kestrel_sem_t *sem, uint32_t initial, uint32_t max)
 {
     if (!sem || max == 0 || initial > max) {
@@ -32,8 +33,12 @@ kestrel_status_t kestrel_sem_take(kestrel_sem_t *sem, uint32_t timeout)
         }
 
         else {
-            kestrel_block_on(&sem->waiters, timeout);
-            blocked = true;
+            if (port_in_isr()) {
+                result = KESTREL_ERR_IN_ISR;
+            } else {
+                kestrel_block_on(&sem->waiters, timeout);
+                blocked = true;
+            }
         }
     }
 

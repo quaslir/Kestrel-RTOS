@@ -2,6 +2,7 @@
 #include "kestrel/critical.h"
 #include "wait_list.h"
 #include "kestrel_internal.h"
+#include "port.h"
 #include <stddef.h>
 
 #ifndef KESTREL_CFG_PRIORITY_INHERITANCE
@@ -24,6 +25,9 @@ kestrel_status_t kestrel_mutex_unlock(kestrel_mutex_t *mutex)
     if (!mutex) {
         return KESTREL_ERR_INVALID_ARG;
     }
+    if (port_in_isr()) {
+        return KESTREL_ERR_IN_ISR;
+    }
     kestrel_status_t result = KESTREL_OK;
     KESTREL_CRITICAL
     {
@@ -43,6 +47,11 @@ kestrel_status_t kestrel_mutex_lock(kestrel_mutex_t *mutex, uint32_t timeout)
     if (!mutex) {
         return KESTREL_ERR_INVALID_ARG;
     }
+
+    if (port_in_isr()) {
+        return KESTREL_ERR_IN_ISR;
+    }
+
     kestrel_status_t result = KESTREL_OK;
 
     bool blocked = false;
