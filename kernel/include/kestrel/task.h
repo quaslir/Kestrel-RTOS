@@ -19,7 +19,7 @@ typedef enum {
     KESTREL_ERR_TIMEOUT = -4,
     KESTREL_ERR_OVERFLOW = -5,
     KESTREL_ERR_INVALID_ARG = -6,
-
+    KESTREL_ERR_NOT_OWNER = -7,
 } kestrel_status_t;
 typedef struct {
     kestrel_status_t status;

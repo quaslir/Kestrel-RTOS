@@ -21,11 +21,14 @@ kestrel_status_t kestrel_mutex_init(kestrel_mutex_t *mutex)
 }
 kestrel_status_t kestrel_mutex_unlock(kestrel_mutex_t *mutex)
 {
+    if (!mutex) {
+        return KESTREL_ERR_INVALID_ARG;
+    }
     kestrel_status_t result = KESTREL_OK;
     KESTREL_CRITICAL
     {
         if (mutex->owner != kestrel_current) {
-            result = KESTREL_ERR_INVALID_ARG;
+            result = KESTREL_ERR_NOT_OWNER;
         } else {
             kestrel_set_priority(kestrel_current, kestrel_current->base_priority);
             kestrel_tcb_t *next = kestrel_wake_one(&mutex->waiters);
@@ -37,7 +40,11 @@ kestrel_status_t kestrel_mutex_unlock(kestrel_mutex_t *mutex)
 }
 kestrel_status_t kestrel_mutex_lock(kestrel_mutex_t *mutex, uint32_t timeout)
 {
+    if (!mutex) {
+        return KESTREL_ERR_INVALID_ARG;
+    }
     kestrel_status_t result = KESTREL_OK;
+
     bool blocked = false;
     KESTREL_CRITICAL
     {
@@ -45,7 +52,7 @@ kestrel_status_t kestrel_mutex_lock(kestrel_mutex_t *mutex, uint32_t timeout)
             mutex->owner = kestrel_current;
         } else if (mutex->owner == kestrel_current) {
             result = KESTREL_ERR_INVALID_ARG;
-        } else if (timeout == 0) {
+        } else if (timeout == KESTREL_NO_WAIT) {
             result = KESTREL_ERR_TIMEOUT;
         }
 

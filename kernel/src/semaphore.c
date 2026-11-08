@@ -53,10 +53,9 @@ kestrel_status_t kestrel_sem_give(kestrel_sem_t *sem)
     KESTREL_CRITICAL
     {
         kestrel_tcb_t *tcb = kestrel_wake_one(&sem->waiters);
-        if (tcb) {
-        } else if (sem->count < sem->max) {
+        if (!tcb && sem->count < sem->max) {
             sem->count++;
-        } else {
+        } else if (!tcb) {
             result = KESTREL_ERR_OVERFLOW;
         }
     }
