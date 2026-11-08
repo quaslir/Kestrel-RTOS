@@ -38,6 +38,10 @@ file(GLOB KESTREL_SOURCES CONFIGURE_DEPENDS
 
 add_library(kestrel OBJECT ${KESTREL_SOURCES})
 
+option(KESTREL_PRIORITY_INHERITANCE "Enable mutex priority inheritance" ON)
+target_compile_definitions(kestrel PRIVATE
+    KESTREL_CFG_PRIORITY_INHERITANCE=$<BOOL:${KESTREL_PRIORITY_INHERITANCE}>)
+
 target_include_directories(kestrel
     PUBLIC
         ${PROJECT_SOURCE_DIR}/drivers/include

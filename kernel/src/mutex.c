@@ -3,6 +3,11 @@
 #include "wait_list.h"
 #include "kestrel_internal.h"
 #include <stddef.h>
+
+#ifndef KESTREL_CFG_PRIORITY_INHERITANCE
+#define KESTREL_CFG_PRIORITY_INHERITANCE 1
+#endif
+
 kestrel_status_t kestrel_mutex_init(kestrel_mutex_t *mutex)
 {
     if (!mutex) {
@@ -45,9 +50,11 @@ kestrel_status_t kestrel_mutex_lock(kestrel_mutex_t *mutex, uint32_t timeout)
         }
 
         else {
+#if KESTREL_CFG_PRIORITY_INHERITANCE
             if (mutex->owner->priority < kestrel_current->priority) {
                 kestrel_set_priority(mutex->owner, kestrel_current->priority);
             }
+#endif
             kestrel_block_on(&mutex->waiters, timeout);
             blocked = true;
         }

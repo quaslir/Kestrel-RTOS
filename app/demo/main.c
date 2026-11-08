@@ -24,7 +24,7 @@
 #define LOW_HOLD_TICKS    50U
 #define MEDIUM_SPIN_TICKS 300U
 
-#define HIGH_TIMEOUT_TICKS 5U
+#define HIGH_TIMEOUT_TICKS KESTREL_WAIT_FOREVER
 
 static kestrel_mutex_t m;
 
