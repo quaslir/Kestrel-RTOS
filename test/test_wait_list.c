@@ -3,7 +3,7 @@
 
 #include "unity.h"
 #include "wait_list.h"
-
+#include "kestrel_internal.h"
 static kestrel_wait_list_t list;
 static kestrel_wait_list_t other_list;
 
