@@ -234,6 +234,70 @@ void test_init_resets_state(void)
     TEST_ASSERT_NULL(ready_pick());
 }
 
+static kestrel_tcb_t ns_tcb[4];
+
+static void ns_add(uint32_t i, uint8_t priority)
+{
+    memset(&ns_tcb[i], 0, sizeof(ns_tcb[i]));
+    ns_tcb[i].priority = priority;
+    ns_tcb[i].state = KESTREL_TASK_READY;
+    ready_insert(&ns_tcb[i]);
+}
+
+static void test_need_switch_empty_mask(void)
+{
+    ready_init();
+    TEST_ASSERT_FALSE(ready_need_switch(3, false));
+    TEST_ASSERT_FALSE(ready_need_switch(0, true));
+}
+
+static void test_need_switch_idle_with_ready_task(void)
+{
+    ready_init();
+    ns_add(0, 1);
+    TEST_ASSERT_TRUE(ready_need_switch(0, true));
+}
+
+static void test_need_switch_higher_priority_woke(void)
+{
+    ready_init();
+    ns_add(0, 1);
+    ns_add(1, 3);
+    TEST_ASSERT_TRUE(ready_need_switch(1, false));
+}
+
+static void test_need_switch_alone_on_priority(void)
+{
+    ready_init();
+    ns_add(0, 3);
+    ns_add(1, 1);
+    TEST_ASSERT_FALSE(ready_need_switch(3, false));
+}
+
+static void test_need_switch_round_robin(void)
+{
+    ready_init();
+    ns_add(0, 3);
+    ns_add(1, 3);
+    TEST_ASSERT_TRUE(ready_need_switch(3, false));
+}
+
+static void test_need_switch_only_lower_ready(void)
+{
+    ready_init();
+    ns_add(0, 1);
+    TEST_ASSERT_FALSE(ready_need_switch(3, false));
+}
+
+static void test_need_switch_after_remove_back_to_alone(void)
+{
+    ready_init();
+    ns_add(0, 3);
+    ns_add(1, 3);
+    ready_remove(&ns_tcb[1]);
+    TEST_ASSERT_FALSE(ready_need_switch(3, false));
+}
+
 int main(void)
 {
     UNITY_BEGIN();
@@ -259,5 +323,12 @@ int main(void)
     RUN_TEST(test_starvation_regression);
     RUN_TEST(test_init_resets_state);
 
+    RUN_TEST(test_need_switch_empty_mask);
+    RUN_TEST(test_need_switch_idle_with_ready_task);
+    RUN_TEST(test_need_switch_higher_priority_woke);
+    RUN_TEST(test_need_switch_alone_on_priority);
+    RUN_TEST(test_need_switch_round_robin);
+    RUN_TEST(test_need_switch_only_lower_ready);
+    RUN_TEST(test_need_switch_after_remove_back_to_alone);
     return UNITY_END();
 }

@@ -35,4 +35,5 @@ void kestrel_block_on(struct kestrel_wait_list *list, uint32_t timeout);
 void kestrel_set_priority(kestrel_tcb_t *tcb,
                           uint8_t new_priority); // call only with KESTREL_CRITICAL
 kestrel_tcb_t *kestrel_wake_one(struct kestrel_wait_list *list);
+bool kestrel_need_switch(void);
 #endif

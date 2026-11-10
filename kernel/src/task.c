@@ -261,3 +261,8 @@ void kestrel_set_priority(kestrel_tcb_t *tcb, uint8_t new_priority)
         tcb->priority = new_priority;
     }
 }
+
+bool kestrel_need_switch(void)
+{
+    return ready_need_switch(kestrel_current->priority, kestrel_current == &idle_tcb);
+}

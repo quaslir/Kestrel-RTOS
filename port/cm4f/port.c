@@ -1,7 +1,7 @@
 #include "port.h"
 #include "stm32f3xx.h"
 #include "kestrel/time.h"
-#define BASEPRI_TH 0x50
+
 __attribute__((naked)) void SVC_Handler(void)
 {
     __asm volatile("ldr r0, =kestrel_current\n"

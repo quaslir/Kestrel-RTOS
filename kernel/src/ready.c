@@ -61,3 +61,22 @@ void ready_remove(kestrel_tcb_t *tcb)
     tcb->next = NULL;
     tcb->prev = NULL;
 }
+
+bool ready_need_switch(uint8_t current_priority, bool current_is_idle)
+{
+    if (ready_mask == 0) {
+        return false;
+    }
+    if (current_is_idle) {
+        return true;
+    }
+    uint8_t top = port_highest_priority(ready_mask);
+    if (top > current_priority) {
+        return true;
+    }
+    if (top == current_priority && ready_head[top] != ready_head[top]->next) {
+        return true;
+    }
+
+    return false;
+}

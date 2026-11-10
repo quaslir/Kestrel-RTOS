@@ -1,9 +1,11 @@
 #ifndef KESTREL_PORT_H
 #define KESTREL_PORT_H
+
 #include <stdint.h>
 #include <stdbool.h>
 #include "cmsis_gcc.h"
 #define PORT_EXC_RETURN_THREAD_PSP 0xFFFFFFFD
+#define BASEPRI_TH                 0x50
 void port_init(void);
 
 void port_yield(void);
