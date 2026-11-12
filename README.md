@@ -23,8 +23,11 @@ STM32F303RE @ 72 MHz, `Release` build, measured with the DWT cycle counter.
 | 1 ms periodic task, wake-up latency, idle system | **429–489 cycles · 6.0–6.8 µs**, period jitter ±0.8 µs |
 | 1 ms periodic task, CPU 100% busy with queue, mutex and 10 kHz ISR traffic | **520–950 cycles · 7.2–13.2 µs**, period jitter ±5.4 µs, **0 missed deadlines** in 10 min |
 | Priority inversion, blocking time of high-priority task | 310 ms → **40 ms** with inheritance |
+| Kernel flash (kernel + port) | **2 338 B** (`-Os`) · 2 660 B (`-O2`) |
+| Kernel RAM, fixed | **434 B** (incl. 256 B idle stack) |
+| RAM per task | **36 B** TCB + stack (1 KB in the benchmarks) |
 
-Context-switch numbers include ~14 cycles of measurement overhead. Queue items are copied inside a critical section, so item size bounds worst-case latency: with 256-byte items the 1 ms task's worst case grows to 76 µs ([details](docs/DEVLOG.md#m62--jitter-under-load-and-what-a-queue-item-costs)). Footprint and a FreeRTOS comparison on the same board follow in M6.
+Context-switch numbers include ~14 cycles of measurement overhead. Queue items are copied inside a critical section, so item size bounds worst-case latency: with 256-byte items the 1 ms task's worst case grows to 76 µs ([details](docs/DEVLOG.md#m62--jitter-under-load-and-what-a-queue-item-costs)). A 24-hour stress test and a FreeRTOS comparison on the same board follow in M6.
 
 ---
 
