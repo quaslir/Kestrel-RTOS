@@ -21,3 +21,6 @@ cmake-build-*/
 .DS_Store
 .zed/
 build-test/
+
+# Benchmark logs
+bench/
