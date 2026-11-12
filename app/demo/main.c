@@ -9,37 +9,31 @@
 #include "systick.h"
 #include "uart.h"
 
-#include "kestrel/mutex.h"
-#include "kestrel/semaphore.h"
 #include "kestrel/task.h"
 #include "kestrel/time.h"
 
 #define LED_PORT GPIOA
 #define LED_PIN  5U
 
-#define PRIO_BACKGROUND 1U
-#define PRIO_REPORTER   2U
-#define PRIO_HANDLER    3U
+#define USE_FPU 1
 
-#define TIM2_IRQ_PRIO       6U
-#define TIM2_PSC            (72U - 1U)
-#define TIM2_ARR            (10000U - 1U)
+#define PRIO_PINGPONG       2U
+#define PRIO_REPORTER       3U
 #define REPORT_PERIOD_TICKS 1000U
-#define CPU_MHZ             72U
 
-static kestrel_sem_t irq_sem;
-static kestrel_sem_t never_sem;
-static kestrel_mutex_t isr_mutex;
+typedef struct {
+    uint32_t count;
+    uint32_t disturbed;
+    uint32_t min;
+    uint32_t max;
+    uint64_t sum;
+} stats_t;
 
-static volatile uint32_t isr_cycles;
-static volatile uint32_t irq_count;
-static volatile uint32_t wake_count;
-static volatile uint32_t lat_last;
-static volatile uint32_t lat_min = 0xFFFFFFFFU;
-static volatile uint32_t lat_max;
-static volatile kestrel_status_t isr_take_status = KESTREL_OK;
-static volatile kestrel_status_t isr_lock_status = KESTREL_OK;
-static volatile uint32_t bg_counter[2];
+static volatile uint32_t switch_start;
+static volatile uint32_t switch_tick;
+static volatile stats_t window = { 0, 0, 0xFFFFFFFFU, 0, 0 };
+static uint32_t total_min = 0xFFFFFFFFU;
+static uint32_t total_max;
 
 static void uart_put_u32(uint32_t value)
 {
@@ -79,72 +73,53 @@ static void dwt_init(void)
     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
 }
 
-static void tim2_init(void)
+static void record(uint32_t cycles)
 {
-    RCC->APB1ENR |= RCC_APB1ENR_TIM2EN;
-    (void)RCC->APB1ENR;
-
-    TIM2->PSC = TIM2_PSC;
-    TIM2->ARR = TIM2_ARR;
-    TIM2->EGR = TIM_EGR_UG;
-    TIM2->SR = 0U;
-    TIM2->DIER = TIM_DIER_UIE;
-
-    NVIC_SetPriority(TIM2_IRQn, TIM2_IRQ_PRIO);
-    NVIC_EnableIRQ(TIM2_IRQn);
-
-    TIM2->CR1 = TIM_CR1_CEN;
-}
-
-void TIM2_IRQHandler(void)
-{
-    TIM2->SR = ~TIM_SR_UIF;
-    irq_count++;
-
-    if (irq_count == 1U) {
-        isr_take_status = kestrel_sem_take(&never_sem, 10U);
-        isr_lock_status = kestrel_mutex_lock(&isr_mutex, KESTREL_NO_WAIT);
+    window.count++;
+    window.sum += cycles;
+    if (cycles < window.min) {
+        window.min = cycles;
     }
-
-    isr_cycles = DWT->CYCCNT;
-    (void)kestrel_sem_give(&irq_sem);
+    if (cycles > window.max) {
+        window.max = cycles;
+    }
 }
 
-static void handler_task(void *arg)
+static void touch_fpu(void)
+{
+#if USE_FPU
+    __asm volatile("vmov s0, %0\n" : : "r"(1U) : "s0");
+#endif
+}
+
+static void mark_and_yield(void)
+{
+    switch_tick = kestrel_get_ticks();
+    switch_start = DWT->CYCCNT;
+    kestrel_yield();
+}
+
+static void pingpong_task(void *arg)
 {
     (void)arg;
-    tim2_init();
+    touch_fpu();
+    mark_and_yield();
 
     while (1) {
-        if (kestrel_sem_take(&irq_sem, KESTREL_WAIT_FOREVER) != KESTREL_OK) {
-            fail();
-        }
-        uint32_t lat = DWT->CYCCNT - isr_cycles;
+        uint32_t tick_before = kestrel_get_ticks();
+        uint32_t now = DWT->CYCCNT;
+        uint32_t start = switch_start;
+        uint32_t start_tick = switch_tick;
+        uint32_t now_tick = kestrel_get_ticks();
 
-        lat_last = lat;
-        if (lat < lat_min) {
-            lat_min = lat;
+        if (tick_before == start_tick && now_tick == start_tick) {
+            record(now - start);
+        } else {
+            window.disturbed++;
         }
-        if (lat > lat_max) {
-            lat_max = lat;
-        }
-        wake_count++;
+
+        mark_and_yield();
     }
-}
-
-static void background_task(void *arg)
-{
-    volatile uint32_t *counter = (volatile uint32_t *)arg;
-
-    while (1) {
-        (*counter)++;
-    }
-}
-
-static void put_status(const char *name, kestrel_status_t status)
-{
-    uart_puts(name);
-    uart_puts(status == KESTREL_ERR_IN_ISR ? "=IN_ISR" : "=WRONG");
 }
 
 static void reporter_task(void *arg)
@@ -155,24 +130,40 @@ static void reporter_task(void *arg)
     while (1) {
         kestrel_delay_until(&last, REPORT_PERIOD_TICKS);
 
-        uart_puts("t=");
+        stats_t s = window;
+        window.count = 0;
+        window.disturbed = 0;
+        window.min = 0xFFFFFFFFU;
+        window.max = 0;
+        window.sum = 0;
+
+        if (s.count == 0U) {
+            continue;
+        }
+        if (s.min < total_min) {
+            total_min = s.min;
+        }
+        if (s.max > total_max) {
+            total_max = s.max;
+        }
+
+        uart_puts(USE_FPU ? "fpu" : "int");
+        uart_puts(" t=");
         uart_put_u32(last / 1000U);
-        uart_puts("s irq=");
-        uart_put_u32(irq_count);
-        uart_puts(" wake=");
-        uart_put_u32(wake_count);
-        uart_puts(" lat=");
-        uart_put_u32(lat_last);
+        uart_puts("s n=");
+        uart_put_u32(s.count);
+        uart_puts(" dist=");
+        uart_put_u32(s.disturbed);
         uart_puts(" min=");
-        uart_put_u32(lat_min);
+        uart_put_u32(s.min);
+        uart_puts(" avg=");
+        uart_put_u32((uint32_t)(s.sum / s.count));
         uart_puts(" max=");
-        uart_put_u32(lat_max);
-        uart_puts(" cyc max_us=");
-        uart_put_u32(lat_max / CPU_MHZ);
-        uart_puts(" ");
-        put_status("take", isr_take_status);
-        uart_puts(" ");
-        put_status("lock", isr_lock_status);
+        uart_put_u32(s.max);
+        uart_puts(" | total min=");
+        uart_put_u32(total_min);
+        uart_puts(" max=");
+        uart_put_u32(total_max);
         uart_puts("\r\n");
     }
 }
@@ -197,22 +188,11 @@ int main(void)
     if (!uart_init(115200U)) {
         fail();
     }
-    uart_puts("\r\n=== Kestrel M5.2: ISR -> task latency ===\r\n");
+    uart_puts("\r\n=== Kestrel M6.1: context switch ===\r\n");
 
-    if (kestrel_sem_init(&irq_sem, 0U, 1U) != KESTREL_OK) {
-        fail();
-    }
-    if (kestrel_sem_init(&never_sem, 0U, 1U) != KESTREL_OK) {
-        fail();
-    }
-    if (kestrel_mutex_init(&isr_mutex) != KESTREL_OK) {
-        fail();
-    }
-
-    create_task(background_task, (void *)&bg_counter[0], PRIO_BACKGROUND);
-    create_task(background_task, (void *)&bg_counter[1], PRIO_BACKGROUND);
+    create_task(pingpong_task, NULL, PRIO_PINGPONG);
+    create_task(pingpong_task, NULL, PRIO_PINGPONG);
     create_task(reporter_task, NULL, PRIO_REPORTER);
-    create_task(handler_task, NULL, PRIO_HANDLER);
     kestrel_start();
 
     while (1) {
