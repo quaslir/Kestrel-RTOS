@@ -7,8 +7,6 @@ Runs on the STM32F303RE (NUCLEO-F303RE) with no HAL and no vendor drivers — on
 
 **Goal:** prove with measurements that a high-priority task meets a **1 ms hard deadline** while lower-priority tasks keep the CPU ~90% busy.
 
-> **Status:** M0–M5 complete · M6 (benchmarks) in progress · [API reference](docs/API.md) · [Development log](docs/DEVLOG.md)
-
 ---
 
 ## Results
