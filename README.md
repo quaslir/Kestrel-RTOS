@@ -27,7 +27,27 @@ STM32F303RE @ 72 MHz, `Release` build, measured with the DWT cycle counter.
 | Kernel RAM, fixed | **434 B** (incl. 256 B idle stack) |
 | RAM per task | **36 B** TCB + stack (1 KB in the benchmarks) |
 
-Context-switch numbers include ~14 cycles of measurement overhead. Queue items are copied inside a critical section, so item size bounds worst-case latency: with 256-byte items the 1 ms task's worst case grows to 76 µs ([details](docs/DEVLOG.md#m62--jitter-under-load-and-what-a-queue-item-costs)). A 24-hour stress test and a FreeRTOS comparison on the same board follow in M6.
+Context-switch numbers include ~14 cycles of measurement overhead. Queue items are copied inside a critical section, so item size bounds worst-case latency: with 256-byte items the 1 ms task's worst case grows to 76 µs ([details](docs/DEVLOG.md#m62--jitter-under-load-and-what-a-queue-item-costs)). A 24-hour stress test follows in M6.
+
+### Compared with FreeRTOS
+
+Same board, toolchain, compiler flags and test firmware, ported to FreeRTOS-Kernel V11.3.3 (ARM_CM4F port, static allocation, 32 priorities, same BASEPRI threshold, no timers/heap).
+
+| Metric | Kestrel | FreeRTOS | Difference |
+|---|---|---|---|
+| Context switch (`yield`), avg | 198 cycles | 193 cycles | −3 % |
+| Context switch with FPU state | 259 cycles | 257 cycles | −1 % |
+| Interrupt → waiting task | **416–422 cycles** | 496–526 cycles | FreeRTOS +19–25 % |
+| 1 ms task wake-up latency, idle | **429–489 cycles**, jitter 58 | 459–535 cycles, jitter 76 | FreeRTOS +7–9 % |
+| 1 ms task wake-up latency, under load¹ | 520–950 cycles, jitter 388 | **462–648 cycles**, jitter 186 | FreeRTOS −11–32 % |
+| Kernel flash, `-Os` / `-O2`² | **2 338 / 2 660 B** | 6 719 / 7 776 B | ~2.9× |
+| Kernel RAM, fixed (incl. 256 B idle stack) | **434 B** | 1 096 B | 2.5× |
+| TCB | **36 B** | 84 B | 2.3× |
+
+Context switching is a draw: both PendSV handlers are almost identical. Kestrel is faster from interrupt to task because a semaphore give hands the token directly to the waiting task, while FreeRTOS's woken task loops back through `xQueueSemaphoreTake` and takes the count again.
+
+¹ Not like-for-like: the same load tasks ran in a different mix on FreeRTOS (15× fewer queue transfers, 5× more mutex cycles), so it spent less time copying queue items with interrupts masked. 0 missed deadlines on both.
+² Sum of the kernel object files; after `--gc-sections` FreeRTOS links 2.2–4.8 KB depending on the APIs used.
 
 ---
 
