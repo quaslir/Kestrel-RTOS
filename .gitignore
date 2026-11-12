@@ -22,5 +22,6 @@ cmake-build-*/
 .zed/
 build-test/
 
-# Benchmark logs
-bench/
+# Benchmark logs and local notes
+bench/*.log
+bench/m6_*_results.md

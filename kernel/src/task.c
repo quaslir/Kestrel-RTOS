@@ -11,8 +11,8 @@
 kestrel_tcb_t *volatile kestrel_current = NULL;
 volatile bool kestrel_started = false;
 static uint8_t task_count = 0;
-__attribute__((aligned(8))) static uint32_t stacks[MAX_TASKS][STACK_SIZE];
-static kestrel_tcb_t tcbs[MAX_TASKS];
+__attribute__((aligned(8))) static uint32_t stacks[KESTREL_MAX_TASKS][KESTREL_STACK_WORDS];
+static kestrel_tcb_t tcbs[KESTREL_MAX_TASKS];
 
 __attribute__((aligned(8))) static uint32_t idle_stack[IDLE_STACK_SIZE];
 static kestrel_tcb_t idle_tcb;
@@ -88,7 +88,7 @@ kestrel_task_result_t kestrel_new_task(kestrel_task_fn_t task, void *data, uint8
         return result;
     }
 
-    if (task_count == MAX_TASKS) {
+    if (task_count == KESTREL_MAX_TASKS) {
         result.status = KESTREL_ERR_NO_SLOT;
         return result;
     }
@@ -98,7 +98,7 @@ kestrel_task_result_t kestrel_new_task(kestrel_task_fn_t task, void *data, uint8
         return result;
     }
 
-    uint32_t *sp = build_frame(&stacks[task_count][STACK_SIZE], task, data);
+    uint32_t *sp = build_frame(&stacks[task_count][KESTREL_STACK_WORDS], task, data);
 
     result.status = KESTREL_OK;
     result.id = task_count;

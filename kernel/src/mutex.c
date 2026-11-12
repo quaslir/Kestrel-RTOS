@@ -5,10 +5,6 @@
 #include "port.h"
 #include <stddef.h>
 
-#ifndef KESTREL_CFG_PRIORITY_INHERITANCE
-#define KESTREL_CFG_PRIORITY_INHERITANCE 1
-#endif
-
 kestrel_status_t kestrel_mutex_init(kestrel_mutex_t *mutex)
 {
     if (!mutex) {

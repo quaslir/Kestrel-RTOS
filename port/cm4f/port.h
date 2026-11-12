@@ -6,6 +6,8 @@
 #include "cmsis_gcc.h"
 #define PORT_EXC_RETURN_THREAD_PSP 0xFFFFFFFD
 #define BASEPRI_TH                 0x50
+#define CLEAR_BIT_ZERO             (~(1U << 0))
+#define INITIAL_XPSR               (1UL << 24)
 void port_init(void);
 
 void port_yield(void);
