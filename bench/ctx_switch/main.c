@@ -61,8 +61,7 @@ static void pingpong_task(void *arg)
 
         /* The reporter has a higher priority: update the window atomically
          * so it never snapshots or resets it half-way through. */
-        KESTREL_CRITICAL
-        {
+        KESTREL_CRITICAL {
             if (tick_before == start_tick && now_tick == start_tick) {
                 bench_stat_add(&window.cycles, now - start);
             } else {
@@ -85,8 +84,7 @@ static void reporter_task(void *arg)
         kestrel_delay_until(&last, BENCH_REPORT_PERIOD_TICKS);
 
         window_t w;
-        KESTREL_CRITICAL
-        {
+        KESTREL_CRITICAL {
             w = window;
             bench_stat_reset(&window.cycles);
             window.disturbed = 0U;

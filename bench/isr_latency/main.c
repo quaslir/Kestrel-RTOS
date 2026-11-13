@@ -115,8 +115,7 @@ static void reporter_task(void *arg)
 
         bench_stat_t w;
         uint32_t bg;
-        KESTREL_CRITICAL
-        {
+        KESTREL_CRITICAL {
             w = window;
             bench_stat_reset(&window);
             bg = bg_counter[0] + bg_counter[1];

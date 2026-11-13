@@ -7,14 +7,13 @@
 #include "kestrel_internal.h"
 #include "ready.h"
 #include "wait_list.h"
-#define IDLE_STACK_SIZE 64
 kestrel_tcb_t *volatile kestrel_current = NULL;
 volatile bool kestrel_started = false;
 static uint8_t task_count = 0;
 __attribute__((aligned(8))) static uint32_t stacks[KESTREL_MAX_TASKS][KESTREL_STACK_WORDS];
 static kestrel_tcb_t tcbs[KESTREL_MAX_TASKS];
 
-__attribute__((aligned(8))) static uint32_t idle_stack[IDLE_STACK_SIZE];
+__attribute__((aligned(8))) static uint32_t idle_stack[KESTREL_IDLE_STACK_WORDS];
 static kestrel_tcb_t idle_tcb;
 
 __attribute__((noreturn)) static void kernel_halt(void)
@@ -31,7 +30,7 @@ __attribute__((noreturn)) static void idle_task(void *arg)
     }
 }
 
-static void write_null(uint32_t **preg, uint8_t times)
+static void push_zeros(uint32_t **preg, uint8_t times)
 {
     uint32_t *reg = *preg;
     for (uint8_t i = 0; i < times; i++) {
@@ -56,8 +55,7 @@ static void block_current(kestrel_task_state_t state)
 
 __attribute__((noreturn)) static void task_exit(void)
 {
-    KESTREL_CRITICAL
-    {
+    KESTREL_CRITICAL {
         block_current(KESTREL_TASK_DEAD);
     }
     while (1) {
@@ -71,10 +69,10 @@ static uint32_t *build_frame(uint32_t *stack_end, kestrel_task_fn_t fn, void *ar
     *--sp = (uint32_t)fn & CLEAR_BIT_ZERO;
     *--sp = (uint32_t)&task_exit;
 
-    write_null(&sp, 4);
+    push_zeros(&sp, 4);
 
     *--sp = (uint32_t)arg;
-    write_null(&sp, 8);
+    push_zeros(&sp, 8);
     *--sp = PORT_EXC_RETURN_THREAD_PSP;
     return sp;
 }
@@ -115,7 +113,7 @@ void kestrel_start(void)
         kernel_halt();
     }
 
-    idle_tcb.sp = build_frame(idle_stack + IDLE_STACK_SIZE, &idle_task, NULL);
+    idle_tcb.sp = build_frame(idle_stack + KESTREL_IDLE_STACK_WORDS, &idle_task, NULL);
     kestrel_current = &idle_tcb;
     kestrel_schedule();
     port_init();
@@ -157,8 +155,7 @@ void kestrel_delay(uint32_t ticks)
     if (ticks == 0 || !kestrel_current) {
         return;
     }
-    KESTREL_CRITICAL
-    {
+    KESTREL_CRITICAL {
         kestrel_current->wake_tick = kestrel_get_ticks() + ticks;
         block_current(KESTREL_TASK_SLEEPING);
     }
@@ -187,8 +184,7 @@ bool kestrel_delay_until(uint32_t *last_wake, uint32_t period)
 
     bool delayed = false;
 
-    KESTREL_CRITICAL
-    {
+    KESTREL_CRITICAL {
         uint32_t now = kestrel_get_ticks();
         uint32_t target_time = *last_wake + period;
         *last_wake = target_time;

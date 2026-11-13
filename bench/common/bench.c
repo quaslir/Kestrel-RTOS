@@ -14,7 +14,7 @@ static void led_init(void)
 {
     gpio_enable_port(LED_PORT);
     gpio_set_mode(LED_PORT, LED_PIN, GPIO_MODE_OUTPUT);
-    gpio_pull(LED_PORT, LED_PIN, GPIO_PULL_NONE);
+    gpio_set_pull(LED_PORT, LED_PIN, GPIO_PULL_NONE);
     gpio_put(LED_PORT, LED_PIN, false);
 }
 

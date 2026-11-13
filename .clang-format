@@ -50,4 +50,7 @@ IncludeBlocks: Preserve
 
 # Comments
 ReflowComments: true
+
+# KESTREL_CRITICAL { ... } is a for-loop macro: format its body like a loop
+ForEachMacros: ['KESTREL_CRITICAL']
 ...

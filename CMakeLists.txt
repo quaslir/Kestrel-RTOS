@@ -120,8 +120,12 @@ target_link_libraries(kestrel_drivers
 #   Builds <name>.elf/.bin/.hex with the startup file and linker script,
 #   links the kernel and the board drivers, and adds a flash_<name> target.
 # ---------------------------------------------------------------------------
-set(KESTREL_LINKER_SCRIPT  ${PROJECT_SOURCE_DIR}/startup/stm32f303re.ld)
-set(KESTREL_STARTUP_SOURCE ${PROJECT_SOURCE_DIR}/startup/startup_stm32f303.c)
+# Cache variables, so that kestrel_add_firmware() also works when it is called
+# from a parent project (a normal variable here would be empty in its scope).
+set(KESTREL_LINKER_SCRIPT  ${PROJECT_SOURCE_DIR}/startup/stm32f303re.ld
+    CACHE FILEPATH "Linker script used by kestrel_add_firmware()")
+set(KESTREL_STARTUP_SOURCE ${PROJECT_SOURCE_DIR}/startup/startup_stm32f303.c
+    CACHE FILEPATH "Startup file (vector table, reset handler) used by kestrel_add_firmware()")
 
 function(kestrel_add_firmware name)
     if(NOT ARGN)

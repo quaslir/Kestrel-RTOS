@@ -13,6 +13,7 @@ Kernel internals (`kestrel_internal.h`, `ready.h`, `wait_list.h`) are private an
 ---
 
 ## Contents
+- [Configuration](#configuration) — `kestrel_config.h`
 - [Constants](#constants)
 - [Status codes](#status-codes)
 - [Tasks](#tasks) — `task.h`
@@ -26,13 +27,31 @@ Kernel internals (`kestrel_internal.h`, `ready.h`, `wait_list.h`) are private an
 
 ---
 
+## Configuration
+
+`#include "kestrel/kestrel_config.h"` (included by `task.h`)
+
+Build-time options with defaults. Each one can be overridden as a compile definition; the CMake options of the same name do this for the kernel and every target that links `Kestrel::kernel`. The kernel and the application must see the same values.
+
+| Name | Default | Meaning |
+|---|---|---|
+| `KESTREL_MAX_TASKS` | `8` | Maximum number of application tasks (the idle task is extra), `1` … `254` |
+| `KESTREL_STACK_WORDS` | `256` | Stack size of every application task, in 32-bit words (1 KB), at least `64` |
+| `KESTREL_IDLE_STACK_WORDS` | `64` | Stack size of the idle task, in 32-bit words, at least `32` |
+| `KESTREL_CFG_PRIORITY_INHERITANCE` | `1` | `1`: mutexes use priority inheritance; `0`: plain mutexes. Set by the CMake option `KESTREL_PRIORITY_INHERITANCE` |
+
+Invalid values stop the build with a `_Static_assert`.
+
+---
+
 ## Constants
+
+`#include "kestrel/task.h"`
 
 | Name | Value | Meaning |
 |---|---|---|
-| `MAX_TASKS` | `8` | Maximum number of application tasks (the idle task is extra) |
-| `STACK_SIZE` | `256` | Stack size per task, in 32-bit words (1 KB) |
 | `KESTREL_MAX_PRIORITY` | `31` | Highest priority |
+| `KESTREL_TASK_INVALID` | `0xFF` | Task id returned when `kestrel_new_task` fails |
 | `KESTREL_NO_WAIT` | `0` | Timeout: do not block, fail immediately if the resource is not available |
 | `KESTREL_WAIT_FOREVER` | `0xFFFFFFFF` | Timeout: block until the resource becomes available |
 
@@ -45,7 +64,7 @@ Kernel internals (`kestrel_internal.h`, `ready.h`, `wait_list.h`) are private an
 | Code | Value | Returned when |
 |---|---|---|
 | `KESTREL_OK` | `0` | Success |
-| `KESTREL_ERR_NO_SLOT` | `-1` | All `MAX_TASKS` task slots are used |
+| `KESTREL_ERR_NO_SLOT` | `-1` | All `KESTREL_MAX_TASKS` task slots are used |
 | `KESTREL_ERR_NULL_FN` | `-2` | Task function is `NULL` |
 | `KESTREL_ERR_INVALID_PRIORITY` | `-3` | Priority is greater than `KESTREL_MAX_PRIORITY` |
 | `KESTREL_ERR_TIMEOUT` | `-4` | The timeout expired, or `KESTREL_NO_WAIT` was given and the resource was not available |
@@ -81,12 +100,12 @@ Creates a task. Its stack and control block are allocated statically. The task s
 | `data` | Passed to the task function as `arg` |
 | `priority` | `0` … `KESTREL_MAX_PRIORITY` |
 
-**Returns:** `status` — `KESTREL_OK`, `KESTREL_ERR_NO_SLOT`, `KESTREL_ERR_NULL_FN` or `KESTREL_ERR_INVALID_PRIORITY`; `id` — the task's slot number (valid only on success).
+**Returns:** `status` — `KESTREL_OK`, `KESTREL_ERR_NO_SLOT`, `KESTREL_ERR_NULL_FN` or `KESTREL_ERR_INVALID_PRIORITY`; `id` — the task's slot number, `KESTREL_TASK_INVALID` on failure.
 Call before `kestrel_start()`.
 
 ### `kestrel_start`
 ```c
-__attribute__((noreturn)) void kestrel_start(void);
+__attribute__((__noreturn__)) void kestrel_start(void);
 ```
 Creates the idle task, configures the exception priorities and starts the highest-priority ready task. Never returns. At least one task must have been created.
 
@@ -137,11 +156,7 @@ uint32_t kestrel_get_ticks(void);
 ```
 **ISR.** Number of ticks since start-up. Wraps around after ~49.7 days at 1 kHz; compare times by subtraction (`now - start >= duration`), never with `<` on absolute values.
 
-### `kestrel_tick`
-```c
-bool kestrel_tick(void);
-```
-Called by the port's `SysTick_Handler`, **not by applications**. Advances the tick counter, wakes sleeping tasks and timed-out waiters, and returns `true` if a context switch is needed.
+**Timeouts are relative to the tick count read inside the call.** A `timeout` of `n` ticks (or `kestrel_delay(n)`) expires at the `n`-th tick boundary after the call, so the real wait is between `n − 1` and `n` tick periods. A timestamp taken by the caller before the call can be one tick older than the one the kernel uses. For a fixed schedule use `kestrel_delay_until`, which works from an absolute tick.
 
 ---
 
@@ -156,6 +171,12 @@ KESTREL_CRITICAL {
 }
 ```
 **ISR.** Raises `BASEPRI` to `PORT_MAX_SYSCALL_PRIO` for the duration of the block: the tick, PendSV and all interrupts that may call the kernel are held off; more urgent interrupts still run. Nestable.
+
+The macro is built on two functions, also usable directly:
+```c
+uint32_t kestrel_enter_critical(void);      /* returns the previous BASEPRI */
+void kestrel_exit_critical(uint32_t prev);  /* restores it */
+```
 
 **Rules**
 - Keep it to microseconds. While inside, the tick cannot advance; a second tick in the same window is lost.
@@ -320,5 +341,11 @@ A call that would block from an ISR returns `KESTREL_ERR_IN_ISR` instead of putt
 
 | CMake option | Default | Effect |
 |---|---|---|
-| `KESTREL_PRIORITY_INHERITANCE` | `ON` | Priority inheritance in mutexes (`OFF` reproduces the priority-inversion demo) |
-| `CMAKE_BUILD_TYPE` | — | `Release` for all published measurements |
+| `KESTREL_MAX_TASKS` | `8` | See [Configuration](#configuration) |
+| `KESTREL_STACK_WORDS` | `256` | See [Configuration](#configuration) |
+| `KESTREL_IDLE_STACK_WORDS` | `64` | See [Configuration](#configuration) |
+| `KESTREL_PRIORITY_INHERITANCE` | `ON` | Priority inheritance in mutexes |
+| `KESTREL_WARNINGS_AS_ERRORS` | `OFF` | Build Kestrel's own code with `-Werror` |
+| `KESTREL_BUILD_EXAMPLES` | `ON` when top-level | Build the firmware in `examples/` |
+| `KESTREL_BUILD_BENCHMARKS` | `ON` when top-level | Build the firmware in `bench/` |
+| `CMAKE_BUILD_TYPE` | `Debug` | `Release` for all published measurements |

@@ -200,8 +200,7 @@ static void reporter_task(void *arg)
         bench_stat_t lat;
         bench_stat_t per;
         uint32_t qn, mn, in, tn, miss, dl;
-        KESTREL_CRITICAL
-        {
+        KESTREL_CRITICAL {
             lat = lat_win;
             per = per_win;
             bench_stat_reset(&lat_win);
@@ -272,7 +271,8 @@ int main(void)
     bench_stat_reset(&per_win);
 
     if (kestrel_queue_init(&q, queue_storage, sizeof(item_t), QUEUE_CAPACITY) != KESTREL_OK ||
-        kestrel_mutex_init(&mtx) != KESTREL_OK || kestrel_sem_init(&isr_sem, 0U, 1U) != KESTREL_OK) {
+        kestrel_mutex_init(&mtx) != KESTREL_OK ||
+        kestrel_sem_init(&isr_sem, 0U, 1U) != KESTREL_OK) {
         bench_fail();
     }
 

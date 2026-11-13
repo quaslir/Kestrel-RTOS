@@ -4,6 +4,7 @@
 #include "kestrel_internal.h"
 __attribute__((naked)) void SVC_Handler(void)
 {
+    // clang-format off
     __asm volatile("ldr r0, =kestrel_current\n"
                    "ldr r0, [r0]\n"
                    "ldr r0, [r0]\n"
@@ -14,10 +15,12 @@ __attribute__((naked)) void SVC_Handler(void)
                    "mov r2, #1\n"
                    "strb r2, [r1]\n"
                    "bx lr");
+    // clang-format on
 }
 
 __attribute__((naked)) void PendSV_Handler(void)
 {
+    // clang-format off
     __asm volatile("mrs r0, psp\n"
                    "tst lr, #0x10\n"
                    "it eq\n"
@@ -44,6 +47,7 @@ __attribute__((naked)) void PendSV_Handler(void)
                    "vldmiaeq r0!, {s16-s31}\n"
                    "msr psp, r0\n"
                    "bx lr");
+    // clang-format on
 }
 
 void port_init(void)
@@ -69,7 +73,7 @@ void SysTick_Handler(void)
 uint32_t port_enter_critical(void)
 {
     uint32_t old_value = __get_BASEPRI();
-    __set_BASEPRI(BASEPRI_TH);
+    __set_BASEPRI(PORT_MAX_SYSCALL_PRIO);
     __ISB();
     return old_value;
 }

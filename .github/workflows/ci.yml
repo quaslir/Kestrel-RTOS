@@ -8,8 +8,12 @@ on:
 
 jobs:
   firmware:
-    name: Firmware (arm-none-eabi)
-    runs-on: ubuntu-24.04
+    name: Firmware (${{ matrix.build_type }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        build_type: [Debug, Release]
     steps:
       - uses: actions/checkout@v4
 
@@ -21,24 +25,28 @@ jobs:
           arm-none-eabi-gcc --version
 
       - name: Configure
-        run: cmake -S . -B build -G "Unix Makefiles"
+        run: >
+          cmake -S . -B build -G "Unix Makefiles"
+          -DCMAKE_BUILD_TYPE=${{ matrix.build_type }}
+          -DKESTREL_WARNINGS_AS_ERRORS=ON
+          -DKESTREL_BUILD_EXAMPLES=ON
+          -DKESTREL_BUILD_BENCHMARKS=ON
 
-      - name: Build
+      - name: Build kernel, examples and benchmarks
         run: cmake --build build -j
 
       - name: Upload firmware
         uses: actions/upload-artifact@v4
         with:
-          name: kestrel-firmware
+          name: kestrel-firmware-${{ matrix.build_type }}
           path: |
-            build/app/demo/*.elf
-            build/app/demo/*.bin
-            build/app/demo/*.hex
-            build/app/demo/*.map
+            build/examples/*.elf
+            build/bench/*.elf
+          if-no-files-found: error
 
   host-tests:
-    name: Host unit tests (Unity)
-    runs-on: ubuntu-24.04
+    name: Host unit tests (Unity, ASan/UBSan)
+    runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
 
@@ -55,3 +63,24 @@ jobs:
 
       - name: Run tests
         run: ctest --test-dir build-test --output-on-failure
+
+  format:
+    name: clang-format
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install clang-format
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang-format
+          clang-format --version
+
+      - name: Check formatting
+        run: |
+          git ls-files -- \
+            'kernel/*.c' 'kernel/*.h' 'port/*.c' 'port/*.h' \
+            'drivers/*.c' 'drivers/*.h' 'startup/*.c' 'startup/*.h' \
+            'examples/*.c' 'examples/*.h' 'bench/*.c' 'bench/*.h' \
+            'test/*.c' 'test/*.h' \
+            | xargs clang-format --dry-run --Werror

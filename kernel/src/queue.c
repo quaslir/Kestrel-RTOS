@@ -28,8 +28,7 @@ kestrel_status_t kestrel_queue_send(kestrel_queue_t *q, const void *item, uint32
     }
     kestrel_status_t result = KESTREL_OK;
     bool blocked = false;
-    KESTREL_CRITICAL
-    {
+    KESTREL_CRITICAL {
         if (!wait_list_is_empty(&q->receivers)) {
             kestrel_tcb_t *tcb = kestrel_wake_one(&q->receivers);
             memcpy(tcb->wait_data, item, q->item_size);
@@ -63,8 +62,7 @@ kestrel_status_t kestrel_queue_receive(kestrel_queue_t *q, void *buffer, uint32_
     }
     bool blocked = false;
     kestrel_status_t result = KESTREL_OK;
-    KESTREL_CRITICAL
-    {
+    KESTREL_CRITICAL {
         if (q->count > 0) {
             memcpy(buffer, q->storage + (q->head * q->item_size), q->item_size);
             q->head = (q->head + 1) % q->capacity;

@@ -43,7 +43,7 @@ void gpio_set_mode(GPIO_TypeDef *port, uint8_t pin, gpio_mode_t mode)
     port->MODER |= ((uint32_t)mode << shift);
 }
 
-void gpio_pull(GPIO_TypeDef *port, uint8_t pin, gpio_pull_t mode)
+void gpio_set_pull(GPIO_TypeDef *port, uint8_t pin, gpio_pull_t mode)
 {
     GPIO_RETURN_IF_BAD_PIN(pin);
     uint8_t shift = GPIO_SHIFT_2BIT(pin);

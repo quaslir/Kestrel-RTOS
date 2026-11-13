@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdbool.h>
 #include "kestrel_config.h"
+#define KESTREL_MAX_PRIORITY 31
 #define KESTREL_TASK_INVALID 0xFFU
 #define KESTREL_NO_WAIT      0U
 #define KESTREL_WAIT_FOREVER 0xFFFFFFFFU
@@ -25,7 +26,7 @@ typedef struct {
 } kestrel_task_result_t;
 
 kestrel_task_result_t kestrel_new_task(kestrel_task_fn_t task, void *data, uint8_t priority);
-__attribute__((noreturn)) void kestrel_start(void);
+__attribute__((__noreturn__)) void kestrel_start(void);
 void kestrel_yield(void);
 void kestrel_delay(uint32_t ticks);
 bool kestrel_delay_until(uint32_t *last_wake, uint32_t period);

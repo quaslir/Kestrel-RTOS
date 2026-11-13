@@ -22,8 +22,7 @@ kestrel_status_t kestrel_sem_take(kestrel_sem_t *sem, uint32_t timeout)
 
     kestrel_status_t result = KESTREL_OK;
     bool blocked = false;
-    KESTREL_CRITICAL
-    {
+    KESTREL_CRITICAL {
         if (sem->count > 0) {
             sem->count--;
         }
@@ -55,8 +54,7 @@ kestrel_status_t kestrel_sem_give(kestrel_sem_t *sem)
     }
 
     kestrel_status_t result = KESTREL_OK;
-    KESTREL_CRITICAL
-    {
+    KESTREL_CRITICAL {
         kestrel_tcb_t *tcb = kestrel_wake_one(&sem->waiters);
         if (!tcb && sem->count < sem->max) {
             sem->count++;

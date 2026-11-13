@@ -3,6 +3,7 @@
 Firmware that reproduces the numbers in the [README Results](../README.md#results).
 All of them run on a NUCLEO-F303RE at 72 MHz, measure with the DWT cycle counter
 (1 cycle = 13.9 ns) and print one line per second over the ST-LINK virtual COM port.
+They are built like any hard-float application, with the default Kestrel configuration and no extra compiler options.
 
 | Firmware | Measures | README value |
 |---|---|---|
@@ -26,7 +27,7 @@ timeout 20 cat /dev/ttyACM0 > jitter.log
 Each firmware prints a banner (`=== Kestrel bench_jitter ===`) after reset, then one line per second.
 Every line has two parts: the last one-second window, and totals since reset (`total ...`).
 Statistics are copied and reset inside `KESTREL_CRITICAL` by a reporter task, so a window never mixes two seconds.
-The first lines after reset include start-up effects; read the totals after a few seconds.
+The published numbers discard the first 3 seconds after reset (start-up effects), so they are computed from the per-second windows, not from the `total` column, which starts at reset.
 
 ## What each benchmark does
 
@@ -74,10 +75,11 @@ load t=12s lat min=<cycles> avg=<cycles> max=<cycles> per min=<cycles> max=<cycl
 
 `q/s`, `mtx/s`, `isr/s` and `took/s` are queue transfers, mutex lock/unlock cycles, TIM2 interrupts and semaphores taken per second. `bench_jitter_idle` prints `idle` and zeros there.
 
-**Why 16-byte items.** The queue copies items inside a critical section, so the item size bounds the worst-case latency of every higher-priority task. With 16-byte items the worst case is about 950 cycles; with 256-byte items it grows to about 5 500 cycles (76 µs). Pass pointers through the queue for large data.
+**Why 16-byte items.** The queue copies items inside a critical section, so the item size bounds the worst-case latency of every higher-priority task. 16 bytes is a typical small message. An earlier run of the same load with 256-byte items (scratch firmware, not part of `bench/`) raised the worst case to about 5 500 cycles (76 µs). Pass pointers through the queue for large data.
 
 ## Caveats
 
 - Code placement matters at the level of a few cycles: flash wait states and the prefetch buffer make the same code a little faster or slower when the linker moves it. Builds with different sources (or `-ffunction-sections` / `--gc-sections` dropping different functions) can differ by a few cycles from the README.
 - Maxima are rare events. The README worst cases for `bench_jitter` come from 10-minute runs; a 20-second capture usually shows a slightly lower maximum.
 - Use a `Release` build. `Debug` (`-Og`) numbers are higher and are not published.
+- `bench_ctx_switch_fpu` shows a single 1 080-cycle sample about every 3 seconds (one window in three has `max=1080`; all other windows stay at 262). It is accepted by the tick filter, so it is not SysTick; the cause is not identified. It does not move the average.

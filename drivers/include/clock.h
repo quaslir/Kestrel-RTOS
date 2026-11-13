@@ -12,6 +12,7 @@ typedef enum {
     CLOCK_ERR_SWITCH_TIMEOUT = -4,
 } clock_status_t;
 
-clock_status_t clock_setup_72MHz(void); // returns actual frequency, -1 if error occurred
+/* HSE bypass 8 MHz -> PLL x9 -> 72 MHz SYSCLK, APB1 36 MHz. Returns CLOCK_OK or the failed step. */
+clock_status_t clock_setup_72MHz(void);
 
 #endif

@@ -174,8 +174,7 @@ typedef void (*vector_t)(void);
 
 #define VECTOR_COUNT (16U + 85U) /* 16 system entries + IRQ 0..84 */
 
-__attribute__((section(".isr_vector"), used))
-const vector_t vector_table[] = {
+__attribute__((section(".isr_vector"), used)) const vector_t vector_table[] = {
     /* ---- Cortex-M4 system exceptions ---- */
     (vector_t)(uintptr_t)&_estack, /*  0  initial MSP value     */
     Reset_Handler,                 /*  1  Reset                 */

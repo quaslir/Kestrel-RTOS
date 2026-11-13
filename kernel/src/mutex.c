@@ -25,8 +25,7 @@ kestrel_status_t kestrel_mutex_unlock(kestrel_mutex_t *mutex)
         return KESTREL_ERR_IN_ISR;
     }
     kestrel_status_t result = KESTREL_OK;
-    KESTREL_CRITICAL
-    {
+    KESTREL_CRITICAL {
         if (mutex->owner != kestrel_current) {
             result = KESTREL_ERR_NOT_OWNER;
         } else {
@@ -51,8 +50,7 @@ kestrel_status_t kestrel_mutex_lock(kestrel_mutex_t *mutex, uint32_t timeout)
     kestrel_status_t result = KESTREL_OK;
 
     bool blocked = false;
-    KESTREL_CRITICAL
-    {
+    KESTREL_CRITICAL {
         if (!mutex->owner) {
             mutex->owner = kestrel_current;
         } else if (mutex->owner == kestrel_current) {
