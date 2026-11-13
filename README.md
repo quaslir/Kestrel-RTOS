@@ -7,7 +7,7 @@ Runs on the STM32F303RE (NUCLEO-F303RE) with no HAL and no vendor drivers — on
 
 **Goal:** prove with measurements that a high-priority task meets a **1 ms hard deadline** while lower-priority tasks keep the CPU ~90% busy.
 
-**Status:** v1.0 — feature-complete for this goal.
+**Status:** v1.0 — feature-complete for this goal · [API reference](docs/API.md)
 
 ---
 
@@ -17,16 +17,16 @@ STM32F303RE @ 72 MHz, `Release` build, measured with the DWT cycle counter by th
 
 | Metric | Result |
 |---|---|
-| Context switch, task → task (`yield`) | **{CTX_AVG} cycles · {CTX_AVG_US} µs** (min {CTX_MIN}, max {CTX_MAX}) |
-| Context switch with FPU state | **{FPU_AVG} cycles · {FPU_AVG_US} µs** (min {FPU_MIN}, max {FPU_MAX}) |
-| Interrupt → waiting task | **{ISR_MIN}–{ISR_MAX} cycles · {ISR_US} µs**, CPU 100% busy |
-| 1 ms periodic task, wake-up latency, idle system | **{IDLE_MIN}–{IDLE_MAX} cycles · {IDLE_US} µs**, period jitter ±{IDLE_J} cycles (±{IDLE_J_US} µs) |
-| 1 ms periodic task, CPU 100% busy with queue, mutex and 10 kHz ISR traffic | **{LOAD_MIN}–{LOAD_MAX} cycles · {LOAD_US} µs**, period jitter ±{LOAD_J} cycles (±{LOAD_J_US} µs), **0 missed deadlines** in 10 min |
+| Context switch, task → task (`yield`) | **198 cycles · 2.75 µs** (min 178, max 352) |
+| Context switch with FPU state | **261 cycles · 3.6 µs** (min 239, max 262) |
+| Interrupt → waiting task | **416–422 cycles · 5.8 µs**, CPU 100% busy |
+| 1 ms periodic task, wake-up latency, idle system | **429–489 cycles · 6.0–6.8 µs**, period jitter ±58 cycles (±0.8 µs) |
+| 1 ms periodic task, CPU 100% busy with queue, mutex and 10 kHz ISR traffic | **520–950 cycles · 7.2–13.2 µs**, period jitter ±388 cycles (±5.4 µs), **0 missed deadlines** in 10 min |
 | Kernel object code, all APIs compiled (kernel + port) | **2 318 B** (`-Os`) · 2 640 B (`-O2`) |
 | Kernel RAM, fixed | **434 B** (incl. 256 B idle stack) |
 | RAM per task | **36 B** TCB + stack (1 KB by default) |
 
-Context-switch numbers include ~14 cycles of measurement overhead. Queue items are copied inside a critical section, so the item size bounds the worst-case latency of higher-priority tasks; the benchmark uses 16-byte items ([details](bench/README.md#bench_jitter_idle-bench_jitter)).
+Context-switch numbers include ~14 cycles of measurement overhead. Queue items are copied inside a critical section, so the item size bounds the worst-case latency of higher-priority tasks; the benchmark uses 16-byte items ([details](bench/README.md)).
 
 ### Compared with FreeRTOS
 
@@ -34,17 +34,17 @@ Same board, toolchain, compiler flags and test firmware, ported to FreeRTOS-Kern
 
 | Metric | Kestrel | FreeRTOS | Difference |
 |---|---|---|---|
-| Context switch (`yield`), avg | {CTX_AVG} cycles | 193 cycles | {D_CTX} % |
-| Context switch with FPU state, avg | {FPU_AVG} cycles | 257 cycles | {D_FPU} % |
-| Interrupt → waiting task | **{ISR_MIN}–{ISR_MAX} cycles** | 496–526 cycles | {D_ISR} % |
-| 1 ms task wake-up latency, idle | **{IDLE_MIN}–{IDLE_MAX} cycles**, jitter {IDLE_J} cycles | 459–535 cycles, jitter 76 cycles | {D_IDLE} % |
+| Context switch (`yield`), avg | 198 cycles | 193 cycles | −3 % |
+| Context switch with FPU state, avg | 261 cycles | 257 cycles | −2 % |
+| Interrupt → waiting task | **416–422 cycles** | 496–526 cycles | +19–25 % |
+| 1 ms task wake-up latency, idle | **429–489 cycles**, jitter 58 cycles | 459–535 cycles, jitter 76 cycles | +7–9 % |
 | Kernel object code, all APIs compiled, `-Os` / `-O2`¹ | **2 318 / 2 640 B** | 6 719 / 7 776 B | +190 % / +195 % |
 | Kernel RAM, fixed (incl. 256 B idle stack) | **434 B** | 1 096 B | +153 % |
 | TCB | **36 B** | 84 B: adds a 16-byte task name, task-notification state, and two list items that each carry a pointer to their containing list | +133 % |
 
 Under load both kernels met every deadline; the load mix differed between the two runs, so latencies under load are not compared.
 
-{EXPLANATION}
+Context switches cost the same within a few cycles: both kernels do essentially the same work in PendSV. Kestrel wakes a task from an interrupt ~20% faster because `give` hands the semaphore directly to the waiting task, while in FreeRTOS the woken task runs through `xQueueSemaphoreTake` again to take it. Kestrel is smaller mainly because it does less: no task names, task notifications or queue sets.
 
 ¹ Sum of the kernel object files; after `--gc-sections` FreeRTOS links 2.2–4.8 KB depending on the APIs used.
 
@@ -61,7 +61,7 @@ Under load both kernels met every deadline; the load mix differed between the tw
 - ISR-safe API: wake a task from an interrupt, switch on ISR exit
 - Critical sections via `BASEPRI` — interrupts above the kernel threshold are never delayed
 - Static allocation only, no heap
-- 42 host unit tests (Unity, ASan/UBSan) in CI on every push
+- Host unit tests for the scheduler core and wait lists (Unity, ASan/UBSan), run in CI on every push
 
 **Out of scope:** dynamic memory, file system, networking, SMP, tickless idle, other architectures.
 
